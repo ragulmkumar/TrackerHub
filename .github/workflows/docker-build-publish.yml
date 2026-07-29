@@ -1,0 +1,128 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract short SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/trackerhub-backend:${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('ghcr.io/{0}/trackerhub-backend:latest', github.repository_owner) || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/trackerhub-frontend:${{ steps.vars.outputs.sha_short }}
+            ${{ github.ref == 'refs/heads/main' && format('ghcr.io/{0}/trackerhub-frontend:latest', github.repository_owner) || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh
+
+      - name: Cleanup old images (primary)
+        id: cleanup
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Function to cleanup an image
+          cleanup_image() {
+            local image=$1
+            local keep=$2
+            # Get the IDs of versions to delete (all but the first `keep` most recent by created_at )
+            mapfile -t ids_to_delete < <(gh api \
+              -H "Accept: application/vnd.github+json" \
+              /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions \
+              --jq '[.[] | {id: .id, created_at: .created_at}] | sort_by(.created_at) | reverse | .['"$keep"':] | .[].id' \
+            )
+            if [ ${#ids_to_delete[@]} -eq 0 ]; then
+              echo "No old versions to delete for $image"
+              return 0
+            fi
+            echo "Deleting ${#ids_to_delete[@]} old versions for $image"
+            for id in "${ids_to_delete[@]}"; do
+              echo "Deleting version ID: $id"
+              gh api \
+                -X DELETE \
+                -H "Accept: application/vnd.github+json" \
+                /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions/$id \
+                || { echo "Failed to delete version ID $id"; return 1; }
+            done
+          }
+
+          # Cleanup backend and frontend images
+          cleanup_image "trackerhub-backend" 15
+          cleanup_image "trackerhub-frontend" 15
+      - name: Fallback cleanup
+        if: steps.cleanup.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Function to cleanup an image
+          cleanup_image() {
+            local image=$1
+            local keep=$2
+            # Get the IDs of versions to delete (all but the first 15 by created_at )
+            mapfile -t ids_to_delete < <(gh api \
+              -H "Accept: application/vnd.github+json" \
+              /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions \
+              --jq '[.[] | {id: .id, created_at: .created_at}] | sort_by(.created_at) | reverse | .['"$keep"':] | .[].id' \
+            )
+            if [ ${#ids_to_delete[@]} -eq 0 ]; then
+              echo "No old versions to delete for $image"
+              return 0
+            fi
+            echo "Deleting ${#ids_to_delete[@]} old versions for $image"
+            for id in "${ids_to_delete[@]}"; do
+              echo "Deleting version ID: $id"
+              gh api \
+                -X DELETE \
+                -H "Accept: application/vnd.github+json" \
+                /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions/$id \
+                || { echo "Failed to delete version ID $id"; exit 1; }
+            done
+          }
+
+          # Cleanup backend and frontend images
+          cleanup_image "trackerhub-backend" 15
+          cleanup_image "trackerhub-frontend" 15
