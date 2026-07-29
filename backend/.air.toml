@@ -1,0 +1,19 @@
+# .air.toml
+# See https://github.com/air-verse/air#configuration
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/main ./cmd/server"
+bin = "./tmp/main"
+include_ext = ["go"]
+include_dir = ["cmd", "internal", "pkg"]
+exclude_dir = ["testdata", "tmp", "vendor"]
+log = "build-errors.log"
+
+[log]
+time = false
+
+[misclenope]
+delete_on_exit = true

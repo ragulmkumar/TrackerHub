@@ -31,7 +31,7 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
-      - VITE_API_URL=http://localhost:8023/api
+      - VITE_API_URL=/api
     depends_on:
       - backend
     networks:
