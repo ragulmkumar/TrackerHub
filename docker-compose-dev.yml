@@ -1,0 +1,81 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "8023:8022"
+    volumes:
+      - ./backend:/app
+      - ./backend/config:/app/config
+    environment:
+      - GO_ENV=development
+      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_PORT=1883
+    depends_on:
+      - mqtt-broker
+    command: air
+    networks:
+      - trackerhub-net
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "3716:3715"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8023/api
+    depends_on:
+      - backend
+    networks:
+      - trackerhub-net
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1884:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    networks:
+      - trackerhub-net
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_DB=trackerhub
+      - POSTGRES_USER=trackerhub
+      - POSTGRES_PASSWORD=trackerhub_pass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - trackerhub-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - trackerhub-net
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  postgres-data:
+  redis-data:
+
+networks:
+  trackerhub-net:
+    driver: bridge

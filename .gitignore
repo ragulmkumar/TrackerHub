@@ -1,0 +1,108 @@
+# .gitignore for TrackerHub project
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Go
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go covariance tool, for static analysis
+*.out
+
+# Dependencies
+vendor/
+
+# Go workspace file
+go.work
+
+# Build results
+/bin/
+/bin/
+/tmp/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+# Note: we don't want to ignore the root dist, but the client/dist and backend/dist if they exist.
+client/dist/
+backend/dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example # keep the example
+
+# Docker
+# Usually you don't want to push images, but Dockerfiles are kept.
+# Ignore docker-compose override files
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Backup files
+*~
+*.swp
+
+# Coverage directories
+coverage/
+.nyc_output/
+
+# Misc
+.cache/
+.uploads/ # we have an uploads directory in the root
+uploads/
+
+# Backend specific
+backend/tmp/
+backend/bin/
+
+# Client specific
+client/node_modules/
+client/.vite/
+client/.svelte-kit/
+client/.output/
+client/.nuxt/
+client/.next/
+client/build/
+client/.parcel-cache/
+client/.cache/
+
+# Miscellaneous
+.env.local
+.env.*.local
+
+# Package manager files
+.npmrc
+.yarnrc
+.pnpmfile
+
+# Serverless
+.serverless/

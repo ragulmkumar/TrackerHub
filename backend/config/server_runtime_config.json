@@ -1,0 +1,16 @@
+{
+  "mqtt": {
+    "brokerHost": "127.0.0.1",
+    "brokerPort": 1883,
+    "applicationID": "",
+    "topicPattern": "",
+    "enabled": false
+  },
+  "server": {
+    "port": 8022
+  },
+  "kalman": {
+    "processVariance": 1,
+    "measurementVariance": 10
+  }
+}

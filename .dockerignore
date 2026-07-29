@@ -1,0 +1,15 @@
+.git
+.gitignore
+*.md
+*.log
+*.tmp
+*.swp
+.DS_Store
+.idea/
+.vscode/
+logs/
+tmp/
+*.test
+*.out
+coverage.out
+backend/docs/

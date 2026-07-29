@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8022:8022"
+    environment:
+      - ENV=production
+      # MQTT configuration (if used)
+      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_PORT=1883
+      # Server configuration
+      - SERVER_PORT=8022
+    depends_on:
+      - mqtt-broker
+    networks:
+      - trackerhub-net
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://backend:8022/api
+    depends_on:
+      - backend
+    networks:
+      - trackerhub-net
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1884:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    networks:
+      - trackerhub-net
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+
+networks:
+  trackerhub-net:
+    driver: bridge
