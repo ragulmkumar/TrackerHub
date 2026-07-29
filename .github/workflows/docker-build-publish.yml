@@ -2,7 +2,7 @@ name: Build and Publish Docker Images
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ main, develop ]
   workflow_dispatch:
 
 jobs:
@@ -61,68 +61,88 @@ jobs:
 
       - name: Cleanup old images (primary)
         id: cleanup
+        if: always()
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Function to cleanup an image
+          # Function to cleanup an image keeping only the most recent N versions
           cleanup_image() {
             local image=$1
             local keep=$2
-            # Get the IDs of versions to delete (all but the first `keep` most recent by created_at )
-            mapfile -t ids_to_delete < <(gh api \
+            
+            # Get list of image versions sorted by creation date (newest first)
+            mapfile -t versions < <(gh api \
               -H "Accept: application/vnd.github+json" \
               /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions \
-              --jq '[.[] | {id: .id, created_at: .created_at}] | sort_by(.created_at) | reverse | .['"$keep"':] | .[].id' \
-            )
-            if [ ${#ids_to_delete[@]} -eq 0 ]; then
-              echo "No old versions to delete for $image"
+              --jq '.[] | {name: .name, created_at: .created_at}' | 
+              sort -r -k 2,2 | 
+              jq -r '.[].name')
+            
+            # If we have fewer or equal to keep versions, nothing to delete
+            if [ ${#versions[@]} -le $keep ]; then
+              echo "No old versions to delete for $image (current count: ${#versions[@]})"
               return 0
             fi
-            echo "Deleting ${#ids_to_delete[@]} old versions for $image"
-            for id in "${ids_to_delete[@]}"; do
-              echo "Deleting version ID: $id"
-              gh api \
+            
+            echo "Deleting old versions for $image (keeping latest $keep, removing ${#versions[@]} - $keep)"
+            
+            # Delete all but the first $keep versions
+            for i in "${!versions[@]:$keep}"; do
+              echo "Deleting version: ${versions[$i]}"
+              if ! gh api \
                 -X DELETE \
                 -H "Accept: application/vnd.github+json" \
-                /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions/$id \
-                || { echo "Failed to delete version ID $id"; return 1; }
+                /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions/${versions[$i]}; then
+                echo "Failed to delete version ${versions[$i]}"
+                return 1
+              fi
             done
           }
 
-          # Cleanup backend and frontend images
-          cleanup_image "trackerhub-backend" 15
-          cleanup_image "trackerhub-frontend" 15
+          # Cleanup backend and frontend images (keep 10 most recent)
+          cleanup_image "trackerhub-backend" 10 || echo "Primary cleanup failed for backend"
+          cleanup_image "trackerhub-frontend" 10 || echo "Primary cleanup failed for frontend"
+
       - name: Fallback cleanup
-        if: steps.cleanup.outcome == 'failure'
+        if: failure() && steps.cleanup.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Function to cleanup an image
+          # Function to cleanup an image keeping only the most recent N versions
           cleanup_image() {
             local image=$1
             local keep=$2
-            # Get the IDs of versions to delete (all but the first 15 by created_at )
-            mapfile -t ids_to_delete < <(gh api \
+            
+            # Get list of image versions sorted by creation date (newest first)
+            mapfile -t versions < <(gh api \
               -H "Accept: application/vnd.github+json" \
               /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions \
-              --jq '[.[] | {id: .id, created_at: .created_at}] | sort_by(.created_at) | reverse | .['"$keep"':] | .[].id' \
-            )
-            if [ ${#ids_to_delete[@]} -eq 0 ]; then
-              echo "No old versions to delete for $image"
+              --jq '.[] | {name: .name, created_at: .created_at}' | 
+              sort -r -k 2,2 | 
+              jq -r '.[].name')
+            
+            # If we have fewer or equal to keep versions, nothing to delete
+            if [ ${#versions[@]} -le $keep ]; then
+              echo "No old versions to delete for $image (current count: ${#versions[@]})"
               return 0
             fi
-            echo "Deleting ${#ids_to_delete[@]} old versions for $image"
-            for id in "${ids_to_delete[@]}"; do
-              echo "Deleting version ID: $id"
-              gh api \
+            
+            echo "Deleting old versions for $image (keeping latest $keep, removing ${#versions[@]} - $keep)"
+            
+            # Delete all but the first $keep versions
+            for i in "${!versions[@]:$keep}"; do
+              echo "Deleting version: ${versions[$i]}"
+              if ! gh api \
                 -X DELETE \
                 -H "Accept: application/vnd.github+json" \
-                /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions/$id \
-                || { echo "Failed to delete version ID $id"; exit 1; }
+                /repos/${{ github.repository_owner }}/${{ github.repository }}/container/packages/$image/versions/${versions[$i]}; then
+                echo "Failed to delete version ${versions[$i]}"
+                exit 1
+              fi
             done
           }
 
-          # Cleanup backend and frontend images
-          cleanup_image "trackerhub-backend" 15
-          cleanup_image "trackerhub-frontend" 15
+          # Cleanup backend and frontend images (keep 10 most recent)
+          cleanup_image "trackerhub-backend" 10
+          cleanup_image "trackerhub-frontend" 10
