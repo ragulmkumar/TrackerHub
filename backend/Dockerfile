@@ -16,7 +16,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN go build -o trackerhub .
+RUN go build -o trackerhub ./cmd/server
 
 # Development stage
 FROM golang:1.25.6-alpine AS development
