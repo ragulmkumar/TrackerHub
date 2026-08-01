@@ -98,3 +98,20 @@ type KalmanParams struct {
 	ProcessVariance     float64 `json:"processVariance" validate:"required,gte=0"`     // Kalman filter process variance Q
 	MeasurementVariance float64 `json:"measurementVariance" validate:"required,gte=0"` // Kalman filter measurement variance R
 }
+
+type AuthConfig struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Secret   string `json:"secret,omitempty"`
+}
+
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+type LoginResponse struct {
+	Success bool   `json:"success"`
+	Token   string `json:"token,omitempty"`
+	Message string `json:"message,omitempty"`
+}

@@ -72,6 +72,48 @@ func (cm *ConfigManager) SaveServerRuntimeConfig(filePath string, config *models
 	return os.WriteFile(filePath, data, 0644)
 }
 
+// LoadAuthConfig loads authentication configuration from JSON file
+func (cm *ConfigManager) LoadAuthConfig(filePath string) (*models.AuthConfig, error) {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		defaultConfig := &models.AuthConfig{
+			Username: "admin",
+			Password: "password123",
+			Secret:   "trackerhub-secret",
+		}
+		if err := cm.SaveAuthConfig(filePath, defaultConfig); err != nil {
+			return nil, err
+		}
+		return defaultConfig, nil
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var authConfig models.AuthConfig
+	if err := json.Unmarshal(data, &authConfig); err != nil {
+		return nil, err
+	}
+
+	return &authConfig, nil
+}
+
+// SaveAuthConfig saves authentication configuration to JSON file
+func (cm *ConfigManager) SaveAuthConfig(filePath string, authConfig *models.AuthConfig) error {
+	data, err := json.MarshalIndent(authConfig, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	return os.WriteFile(filePath, data, 0644)
+}
+
 // LoadWebUIConfig loads the web UI configuration from JSON file
 func (cm *ConfigManager) LoadWebUIConfig(filePath string) (*models.WebUIConfig, error) {
 	// Check if file exists

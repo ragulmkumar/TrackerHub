@@ -1,5 +1,5 @@
 # Base stage
-FROM node:20-alpine AS base
+FROM node:20-bullseye AS base
 
 # Set working directory
 WORKDIR /app
@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Development stage
 FROM base AS development

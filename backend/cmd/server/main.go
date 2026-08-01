@@ -87,6 +87,10 @@ func main() {
 
 	// Initialize components
 	apiHandler := api.NewAPIHandler(configManager)
+	authHandler, err := api.NewAuthHandler(configManager)
+	if err != nil {
+		log.Fatalf("Failed to initialize auth handler: %v", err)
+	}
 	positioningService := positioning.NewPositioningService()
 	mqttHandler := mqtt.NewMQTTHandler(&runtimeConfig.MQTT, webUIConfig, runtimeConfig)
 	wsHub := ws.NewHub()
@@ -144,6 +148,7 @@ func main() {
 	// API routes
 	apiGroup := router.Group("/api")
 	{
+		apiGroup.POST("/login", authHandler.Login)
 		apiGroup.GET("/config/web", apiHandler.GetWebUIConfig)
 		apiGroup.POST("/config/web", apiHandler.UpdateWebUIConfig)
 		apiGroup.GET("/server-runtime-config", apiHandler.GetServerRuntimeConfig)
