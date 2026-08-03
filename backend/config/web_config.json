@@ -1,4 +1,9 @@
 {
+  "map": {
+    "name": "Indoor",
+    "width": 150,
+    "height": 80
+  },
   "beacons": [],
   "settings": {
     "signalPropagationFactor": 2.5

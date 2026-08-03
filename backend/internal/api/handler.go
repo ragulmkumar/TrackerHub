@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,12 +14,15 @@ import (
 // APIHandler handles HTTP API requests
 type APIHandler struct {
 	configManager *config.ConfigManager
+	trackerStates map[string]models.TrackerState
+	trackerMu     sync.RWMutex
 }
 
 // NewAPIHandler creates a new API handler
 func NewAPIHandler(configManager *config.ConfigManager) *APIHandler {
 	return &APIHandler{
 		configManager: configManager,
+		trackerStates: make(map[string]models.TrackerState),
 	}
 }
 
@@ -101,12 +106,48 @@ func (h *APIHandler) UpdateServerRuntimeConfig(c *gin.Context) {
 		return
 	}
 
+	if err := h.ValidateServerRuntimeConfig(&config); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	if err := h.configManager.SaveServerRuntimeConfig("config/server_runtime_config.json", &config); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save server runtime configuration"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Server runtime configuration updated successfully"})
+}
+
+// RestartService handles a restart request for the runtime services.
+func (h *APIHandler) RestartService(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "Service restart requested"})
+}
+
+// ValidateServerRuntimeConfig validates the runtime configuration payload.
+func (h *APIHandler) ValidateServerRuntimeConfig(config *models.ServerRuntimeConfig) error {
+	if config == nil {
+		return fmt.Errorf("configuration payload is required")
+	}
+	if config.Server.Port <= 0 {
+		return fmt.Errorf("server port must be greater than zero")
+	}
+	if config.Kalman.ProcessVariance < 0 || config.Kalman.MeasurementVariance < 0 {
+		return fmt.Errorf("kalman variances must be non-negative")
+	}
+	if config.MQTT.BrokerPort <= 0 || config.MQTT.BrokerPort > 65535 {
+		return fmt.Errorf("mqtt broker port must be between 1 and 65535")
+	}
+	if config.MQTT.Enabled && config.MQTT.ApplicationID == "" {
+		return fmt.Errorf("application ID is required when MQTT is enabled")
+	}
+	if config.MQTT.Enabled && config.MQTT.ServerRegion == "" {
+		return fmt.Errorf("server region is required when MQTT is enabled")
+	}
+	if config.MQTT.Enabled && config.MQTT.TopicPattern == "" {
+		return fmt.Errorf("topic pattern is required when MQTT is enabled")
+	}
+	return nil
 }
 
 // GetTrackers godoc
@@ -118,7 +159,57 @@ func (h *APIHandler) UpdateServerRuntimeConfig(c *gin.Context) {
 // @Success 200 {object} map[string]interface{} "Map of tracker states"
 // @Router /api/trackers [get]
 func (h *APIHandler) GetTrackers(c *gin.Context) {
-	// In a real implementation, we would get this from a tracker state manager
-	// For now, return an empty map
-	c.JSON(http.StatusOK, gin.H{})
+	h.trackerMu.RLock()
+	defer h.trackerMu.RUnlock()
+
+	trackers := make(map[string]models.TrackerState, len(h.trackerStates))
+	for id, state := range h.trackerStates {
+		trackers[id] = state
+	}
+	c.JSON(http.StatusOK, trackers)
+}
+
+// PostTrackerUpdate godoc
+// @Summary Add or update a tracker position
+// @Description Stores a tracker position update for the live monitor view
+// @Tags Trackers
+// @Accept json
+// @Produce json
+// @Param update body models.TrackerUpdateRequest true "Tracker update"
+// @Success 200 {object} map[string]string
+// @Router /api/trackers [post]
+func (h *APIHandler) PostTrackerUpdate(c *gin.Context) {
+	var update models.TrackerUpdateRequest
+	if err := c.ShouldBindJSON(&update); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tracker update payload"})
+		return
+	}
+
+	h.ApplyTrackerUpdatePayload(update)
+	c.JSON(http.StatusOK, gin.H{"message": "Tracker update accepted"})
+}
+
+// UpsertTrackerState stores or updates the last known state for a tracker.
+func (h *APIHandler) UpsertTrackerState(trackerID string, coordinates []float64, timestamp int64) {
+	h.trackerMu.Lock()
+	defer h.trackerMu.Unlock()
+
+	state := h.trackerStates[trackerID]
+	state.TrackerID = trackerID
+	state.LastUpdateTime = timestamp
+	if len(coordinates) >= 2 {
+		state.X = &coordinates[0]
+		state.Y = &coordinates[1]
+	}
+	state.PositionHistory = append(state.PositionHistory, [3]float64{coordinates[0], coordinates[1], float64(timestamp)})
+	if len(state.PositionHistory) > 20 {
+		state.PositionHistory = state.PositionHistory[len(state.PositionHistory)-20:]
+	}
+
+	h.trackerStates[trackerID] = state
+}
+
+// ApplyTrackerUpdatePayload applies a tracker update request to the in-memory tracker state.
+func (h *APIHandler) ApplyTrackerUpdatePayload(update models.TrackerUpdateRequest) {
+	h.UpsertTrackerState(update.TrackerID, []float64{update.X, update.Y}, update.Timestamp)
 }

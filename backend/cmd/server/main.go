@@ -15,6 +15,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"trackerHub/backend/internal/api"
+	"trackerHub/backend/internal/auth"
 	"trackerHub/backend/internal/config"
 	"trackerHub/backend/internal/models"
 	"trackerHub/backend/internal/mqtt"
@@ -91,6 +92,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize auth handler: %v", err)
 	}
+	authConfig, err := configManager.LoadAuthConfig("config/auth_config.json")
+	if err != nil {
+		log.Fatalf("Failed to load auth config: %v", err)
+	}
+	authService := auth.NewAuthService(*authConfig)
 	positioningService := positioning.NewPositioningService()
 	mqttHandler := mqtt.NewMQTTHandler(&runtimeConfig.MQTT, webUIConfig, runtimeConfig)
 	wsHub := ws.NewHub()
@@ -149,11 +155,18 @@ func main() {
 	apiGroup := router.Group("/api")
 	{
 		apiGroup.POST("/login", authHandler.Login)
-		apiGroup.GET("/config/web", apiHandler.GetWebUIConfig)
-		apiGroup.POST("/config/web", apiHandler.UpdateWebUIConfig)
-		apiGroup.GET("/server-runtime-config", apiHandler.GetServerRuntimeConfig)
-		apiGroup.POST("/server-runtime-config", apiHandler.UpdateServerRuntimeConfig)
-		apiGroup.GET("/trackers", apiHandler.GetTrackers)
+
+		authenticated := apiGroup.Group("")
+		authenticated.Use(auth.AuthMiddleware(authService))
+		{
+			authenticated.GET("/config/web", apiHandler.GetWebUIConfig)
+			authenticated.POST("/config/web", apiHandler.UpdateWebUIConfig)
+			authenticated.GET("/server-runtime-config", apiHandler.GetServerRuntimeConfig)
+			authenticated.POST("/server-runtime-config", apiHandler.UpdateServerRuntimeConfig)
+			authenticated.POST("/server-runtime-config/restart", apiHandler.RestartService)
+			authenticated.GET("/trackers", apiHandler.GetTrackers)
+			authenticated.POST("/trackers", apiHandler.PostTrackerUpdate)
+		}
 	}
 
 	// WebSocket endpoint

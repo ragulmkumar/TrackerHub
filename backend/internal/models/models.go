@@ -84,6 +84,7 @@ type MQTTServerConfig struct {
 	ApplicationID  string `json:"applicationID" validate:"required"` // e.g., your OrgID
 	TopicPattern   string `json:"topicPattern" validate:"required"`  // e.g., "/device_sensor_data/{ApplicationID}/+/+/+/+"
 	ClientID       string `json:"clientID,omitempty"`
+	ServerRegion   string `json:"serverRegion,omitempty"`
 	Enabled        bool   `json:"enabled" default:"true"`
 	LiveMQTTStatus string `json:"live_mqtt_status,omitempty"` // Live MQTT connection status, not saved to file
 }
@@ -114,4 +115,12 @@ type LoginResponse struct {
 	Success bool   `json:"success"`
 	Token   string `json:"token,omitempty"`
 	Message string `json:"message,omitempty"`
+}
+
+// TrackerUpdateRequest represents a tracker update pushed from a client or simulator.
+type TrackerUpdateRequest struct {
+	TrackerID string  `json:"trackerId" binding:"required"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Timestamp int64   `json:"timestamp"`
 }
