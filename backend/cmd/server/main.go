@@ -145,26 +145,40 @@ func main() {
 	})
 
 	mqttHandler.SetErrorHandler(func(err error) {
-		if err == nil {
+		status := mqttHandler.GetConnectionStatus()
+		if err == nil && status == "connected" {
 			wsHub.BroadcastMQTTStatus("connected")
 			return
 		}
-		status := mqttHandler.GetConnectionStatus()
-		if status == "" {
-			status = "error"
+		if status == "disconnected" {
+			wsHub.BroadcastMQTTStatus("disconnected")
+			return
 		}
-		wsHub.BroadcastMQTTStatus(status)
+		if status == "connecting" {
+			wsHub.BroadcastMQTTStatus("connecting")
+			return
+		}
+		if status == "disabled" {
+			wsHub.BroadcastMQTTStatus("disabled")
+			return
+		}
+		wsHub.BroadcastMQTTStatus("error")
 	})
 
 	// Connect to MQTT if enabled
 	if startupRuntimeConfig.MQTT.Enabled {
+		wsHub.BroadcastMQTTStatus("connecting")
 		if err := mqttHandler.Connect(); err != nil {
+			wsHub.BroadcastMQTTStatus("error")
 			log.Printf("Failed to connect to MQTT: %v", err)
 		} else {
 			if err := mqttHandler.StartSubscribing(); err != nil {
+				wsHub.BroadcastMQTTStatus("error")
 				log.Printf("Failed to subscribe to MQTT topics: %v", err)
 			}
 		}
+	} else {
+		wsHub.BroadcastMQTTStatus("disabled")
 	}
 
 	// Start WebSocket hub
@@ -203,7 +217,25 @@ func main() {
 			log.Printf("Failed to upgrade WebSocket: %v", err)
 			return
 		}
-		ws.HandleWebSocket(conn, wsHub)
+		client := ws.HandleWebSocket(conn, wsHub)
+
+		// Send current initial tracker state immediately to the connected client
+		client.SendMessage(map[string]interface{}{
+			"type": "initial_state",
+			"data": apiHandler.GetTrackerSnapshot(),
+		})
+
+		// Send current MQTT status immediately to the connected client
+		mqttStatus := mqttHandler.GetConnectionStatus()
+		if !startupRuntimeConfig.MQTT.Enabled {
+			mqttStatus = "disabled"
+		} else if mqttStatus == "" {
+			mqttStatus = "connecting"
+		}
+		client.SendMessage(map[string]interface{}{
+			"type": "mqtt_status_update",
+			"data": map[string]string{"status": mqttStatus},
+		})
 	})
 
 	// Start HTTP server

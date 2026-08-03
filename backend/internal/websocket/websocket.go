@@ -105,7 +105,7 @@ func (h *Hub) BroadcastMQTTStatus(status string) {
 }
 
 // HandleWebSocket handles a new WebSocket connection
-func HandleWebSocket(conn *websocket.Conn, hub *Hub) {
+func HandleWebSocket(conn *websocket.Conn, hub *Hub) *Client {
 	client := &Client{
 		hub:  hub,
 		conn: conn,
@@ -117,6 +117,23 @@ func HandleWebSocket(conn *websocket.Conn, hub *Hub) {
 	// new goroutines.
 	go client.writePump()
 	go client.readPump()
+
+	return client
+}
+
+// SendMessage sends a JSON serializable message to this client.
+func (c *Client) SendMessage(message interface{}) {
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling client message: %v", err)
+		return
+	}
+
+	select {
+	case c.send <- jsonData:
+	default:
+		log.Printf("WebSocket client send buffer full, dropping message")
+	}
 }
 
 const (
