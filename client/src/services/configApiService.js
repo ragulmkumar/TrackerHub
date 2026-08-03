@@ -45,6 +45,17 @@ export async function loadServerRuntimeConfiguration() {
   return request("/server-runtime-config");
 }
 
+export async function loadAuthenticationConfiguration() {
+  return request("/auth-config");
+}
+
+export async function saveAuthenticationConfiguration(configData) {
+  return request("/auth-config", {
+    method: "POST",
+    body: JSON.stringify(configData),
+  });
+}
+
 export async function saveServerRuntimeConfiguration(configData) {
   return request("/server-runtime-config", {
     method: "POST",

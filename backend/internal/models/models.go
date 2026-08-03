@@ -106,6 +106,18 @@ type AuthConfig struct {
 	Secret   string `json:"secret,omitempty"`
 }
 
+type AuthConfigResponse struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type AuthConfigUpdateRequest struct {
+	Username           string `json:"username,omitempty"`
+	Password           string `json:"password,omitempty"`
+	NewPassword        string `json:"newPassword,omitempty"`
+	ConfirmNewPassword string `json:"confirmNewPassword,omitempty"`
+}
+
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`

@@ -24,7 +24,12 @@ func TestAuthServiceGenerateAndValidateToken(t *testing.T) {
 }
 
 func TestAuthServiceAcceptsHashedStoredPassword(t *testing.T) {
-	service := NewAuthService(models.AuthConfig{Username: "admin", Password: hashPassword("password123"), Secret: "test-secret"})
+	hashedPassword, err := hashPassword("password123")
+	if err != nil {
+		t.Fatalf("hashPassword returned error: %v", err)
+	}
+
+	service := NewAuthService(models.AuthConfig{Username: "admin", Password: hashedPassword, Secret: "test-secret"})
 
 	if !service.Authenticate("admin", "password123") {
 		t.Fatalf("Authenticate should accept a hashed stored password")

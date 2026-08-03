@@ -1,5 +1,5 @@
 {
   "username": "admin",
-  "password": "password123",
+  "password": "$2a$10$TDekCO6Pt2eBe8sRQsS5y.oFEjKhYmdtMYTHpBqrXS3aROY43EZji",
   "secret": "trackerhub-secret"
 }

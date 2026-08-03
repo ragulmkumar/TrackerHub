@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"trackerHub/backend/internal/models"
 )
@@ -96,11 +99,38 @@ func (cm *ConfigManager) LoadAuthConfig(filePath string) (*models.AuthConfig, er
 		return nil, err
 	}
 
+	if authConfig.Username == "" {
+		authConfig.Username = "admin"
+	}
+	if authConfig.Password == "" {
+		authConfig.Password = "password123"
+	}
+	if authConfig.Secret == "" {
+		authConfig.Secret = "trackerhub-secret"
+	}
+
+	if !strings.HasPrefix(authConfig.Password, "$2") {
+		hashedPassword, err := hashConfigPassword(authConfig.Password)
+		if err == nil {
+			authConfig.Password = hashedPassword
+			if saveErr := cm.SaveAuthConfig(filePath, &authConfig); saveErr != nil {
+				return nil, saveErr
+			}
+		}
+	}
+
 	return &authConfig, nil
 }
 
 // SaveAuthConfig saves authentication configuration to JSON file
 func (cm *ConfigManager) SaveAuthConfig(filePath string, authConfig *models.AuthConfig) error {
+	if authConfig != nil && authConfig.Password != "" && !strings.HasPrefix(authConfig.Password, "$2") {
+		hashedPassword, err := hashConfigPassword(authConfig.Password)
+		if err == nil {
+			authConfig.Password = hashedPassword
+		}
+	}
+
 	data, err := json.MarshalIndent(authConfig, "", "  ")
 	if err != nil {
 		return err
@@ -112,6 +142,28 @@ func (cm *ConfigManager) SaveAuthConfig(filePath string, authConfig *models.Auth
 	}
 
 	return os.WriteFile(filePath, data, 0644)
+}
+
+func hashConfigPassword(password string) (string, error) {
+	if password == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(password, "$2") {
+		return password, nil
+	}
+	return bcryptHash(password)
+}
+
+func bcryptHash(password string) (string, error) {
+	return bcryptHashWithCost(password, 10)
+}
+
+func bcryptHashWithCost(password string, cost int) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), cost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
 
 // LoadWebUIConfig loads the web UI configuration from JSON file

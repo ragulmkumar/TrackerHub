@@ -161,6 +161,8 @@ func main() {
 		{
 			authenticated.GET("/config/web", apiHandler.GetWebUIConfig)
 			authenticated.POST("/config/web", apiHandler.UpdateWebUIConfig)
+			authenticated.GET("/auth-config", authHandler.GetAuthConfig)
+			authenticated.POST("/auth-config", authHandler.UpdateAuthConfig)
 			authenticated.GET("/server-runtime-config", apiHandler.GetServerRuntimeConfig)
 			authenticated.POST("/server-runtime-config", apiHandler.UpdateServerRuntimeConfig)
 			authenticated.POST("/server-runtime-config/restart", apiHandler.RestartService)
