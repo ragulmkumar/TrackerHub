@@ -157,18 +157,29 @@ export default function LiveMap({
         const lineWidth = entity.lineWidth || 1;
 
         if (entity.type === "line" || entity.type === "polyline") {
+          const [firstPoint, ...rest] = entity.points;
+          if (!firstPoint || firstPoint.length < 2) {
+            return;
+          }
+
           ctx.beginPath();
           ctx.strokeStyle = strokeColor;
           ctx.lineWidth = lineWidth;
-          const [firstPoint, ...rest] = entity.points;
-          ctx.moveTo(firstPoint[0] * scale, firstPoint[1] * scale);
+          const [startX, startY] = toCanvas(firstPoint[0], firstPoint[1]);
+          ctx.moveTo(startX, startY);
+
           rest.forEach((point) => {
-            ctx.lineTo(point[0] * scale, point[1] * scale);
+            if (!point || point.length < 2) {
+              return;
+            }
+            const [x, y] = toCanvas(point[0], point[1]);
+            ctx.lineTo(x, y);
           });
+
           if (entity.type === "polyline" && entity.closed) {
             ctx.closePath();
           }
-          if (fillColor) {
+          if (fillColor && entity.type === "polyline" && entity.closed) {
             ctx.fillStyle = fillColor;
             ctx.fill();
           }

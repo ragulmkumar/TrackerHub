@@ -1,6 +1,8 @@
 const DEFAULT_WS_URL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
 const WS_URL = import.meta.env.VITE_WS_URL || DEFAULT_WS_URL;
 
+import { getAuthToken } from "../services/authService";
+
 function safeClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -14,6 +16,7 @@ class WebSocketService {
     this.trackers = {};
     this.wsStatus = "offline";
     this.mqttStatus = "disconnected";
+    this.mqttEnabled = null;
   }
 
   getState() {
@@ -43,8 +46,23 @@ class WebSocketService {
     this.manualClose = false;
     this.setWSStatus("connecting");
 
+    let wsUrl = WS_URL;
+    const authToken = getAuthToken();
+    if (authToken) {
+      try {
+        const parsedUrl = new URL(WS_URL, window.location.origin);
+        parsedUrl.searchParams.set("token", authToken);
+        wsUrl = parsedUrl.toString();
+      } catch (err) {
+        console.warn(
+          "Invalid WS URL, using default URL without auth token",
+          err,
+        );
+      }
+    }
+
     try {
-      this.ws = new WebSocket(WS_URL);
+      this.ws = new WebSocket(wsUrl);
     } catch (err) {
       this.setWSStatus("error");
       this.scheduleReconnect();
@@ -119,6 +137,10 @@ class WebSocketService {
     }
   }
 
+  setMQTTEnabled(enabled) {
+    this.mqttEnabled = enabled;
+  }
+
   setTrackers(trackerMap) {
     this.trackers = trackerMap;
     this.notify();
@@ -165,6 +187,9 @@ class WebSocketService {
     }
 
     if (type === "tracker_update") {
+      if (this.mqttEnabled === null || this.mqttEnabled === false) {
+        return;
+      }
       this.updateTrackers(data);
       return;
     }

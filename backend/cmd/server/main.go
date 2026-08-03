@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -212,6 +213,22 @@ func main() {
 
 	// WebSocket endpoint
 	router.GET("/ws", func(c *gin.Context) {
+		token := c.Query("token")
+		if token == "" {
+			authorization := c.GetHeader("Authorization")
+			if strings.HasPrefix(authorization, "Bearer ") {
+				token = strings.TrimPrefix(authorization, "Bearer ")
+			}
+		}
+		if token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing auth token"})
+			return
+		}
+		if _, valid := authService.ValidateToken(token); !valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired auth token"})
+			return
+		}
+
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			log.Printf("Failed to upgrade WebSocket: %v", err)

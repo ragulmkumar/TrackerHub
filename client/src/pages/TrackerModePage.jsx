@@ -84,6 +84,24 @@ export default function TrackerModePage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (loadingRuntimeConfig) {
+      websocketService.setMQTTEnabled(null);
+      return;
+    }
+
+    if (runtimeConfig === null) {
+      websocketService.setMQTTEnabled(null);
+      return;
+    }
+
+    const mqttEnabled = runtimeConfig?.mqtt?.enabled;
+    websocketService.setMQTTEnabled(mqttEnabled !== false);
+    if (mqttEnabled === false) {
+      setTrackers([]);
+    }
+  }, [runtimeConfig, loadingRuntimeConfig]);
+
   const activeTrackers = useMemo(() => trackers.length, [trackers]);
   const latestTracker = useMemo(() => {
     return trackers
