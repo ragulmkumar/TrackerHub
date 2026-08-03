@@ -70,9 +70,10 @@ type WebUIConfig struct {
 
 // ServerRuntimeConfig represents server runtime configuration
 type ServerRuntimeConfig struct {
-	MQTT   MQTTServerConfig `json:"mqtt"`
-	Server WebServerConfig  `json:"server"`
-	Kalman KalmanParams     `json:"kalman"`
+	MQTT              MQTTServerConfig `json:"mqtt"`
+	Server            WebServerConfig  `json:"server"`
+	Kalman            KalmanParams     `json:"kalman"`
+	AllowAreaLocation bool             `json:"allowAreaLocation,omitempty"`
 }
 
 // MQTTServerConfig holds MQTT connection settings

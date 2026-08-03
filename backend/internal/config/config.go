@@ -39,6 +39,7 @@ func (cm *ConfigManager) LoadServerRuntimeConfig(filePath string) (*models.Serve
 				ProcessVariance:     1.0,
 				MeasurementVariance: 10.0,
 			},
+			AllowAreaLocation: false,
 		}
 		if err := cm.SaveServerRuntimeConfig(filePath, defaultConfig); err != nil {
 			return nil, err

@@ -64,7 +64,8 @@ func TestValidateServerRuntimeConfig(t *testing.T) {
 			TopicPattern:  "tracker/+/event",
 			ServerRegion:  "eu",
 		},
-		Kalman: models.KalmanParams{ProcessVariance: 1.0, MeasurementVariance: 10.0},
+		Kalman:            models.KalmanParams{ProcessVariance: 1.0, MeasurementVariance: 10.0},
+		AllowAreaLocation: true,
 	}
 
 	if err := handler.ValidateServerRuntimeConfig(valid); err != nil {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import AreaLocationConfigCard from "../components/AreaLocationConfigCard";
 import AuthenticationCard from "../components/AuthenticationCard";
 import ChirpStackConfigCard from "../components/ChirpStackConfigCard";
 import SenseCapConfigCard from "../components/SenseCapConfigCard";
@@ -183,6 +184,7 @@ export default function ConfigurationPage() {
           <div className="grid gap-6">
             <AuthenticationCard />
             <ServerRuntimeCard />
+            <AreaLocationConfigCard />
             <SenseCapConfigCard />
             <ChirpStackConfigCard />
 
