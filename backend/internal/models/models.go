@@ -70,11 +70,12 @@ type WebUIConfig struct {
 
 // ServerRuntimeConfig represents server runtime configuration
 type ServerRuntimeConfig struct {
-	MQTT              MQTTServerConfig `json:"mqtt"`
-	Server            WebServerConfig  `json:"server"`
-	Kalman            KalmanParams     `json:"kalman"`
-	AllowAreaLocation bool             `json:"allowAreaLocation,omitempty"`
-	Webhook           WebhookConfig    `json:"webhook"`
+	MQTT                 MQTTServerConfig           `json:"mqtt"`
+	Server               WebServerConfig            `json:"server"`
+	Kalman               KalmanParams               `json:"kalman"`
+	AllowAreaLocation    bool                       `json:"allowAreaLocation,omitempty"`
+	Webhook              WebhookConfig              `json:"webhook"`
+	TrackerAccessControl TrackerAccessControlConfig `json:"trackerAccessControl,omitempty"`
 }
 
 // MQTTServerConfig holds MQTT connection settings
@@ -100,6 +101,13 @@ type WebServerConfig struct {
 type KalmanParams struct {
 	ProcessVariance     float64 `json:"processVariance" validate:"required,gte=0"`     // Kalman filter process variance Q
 	MeasurementVariance float64 `json:"measurementVariance" validate:"required,gte=0"` // Kalman filter measurement variance R
+}
+
+// TrackerAccessControlConfig stores the optional tracker allow-list policy.
+type TrackerAccessControlConfig struct {
+	Enabled         bool     `json:"enabled"`
+	AllowAll        bool     `json:"allowAll,omitempty"`
+	AllowedTrackers []string `json:"allowedTrackers,omitempty"`
 }
 
 // WebhookConfig stores optional outbound webhook settings.

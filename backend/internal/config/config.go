@@ -45,6 +45,11 @@ func (cm *ConfigManager) LoadServerRuntimeConfig(filePath string) (*models.Serve
 				HostURL: "",
 				Headers: map[string]string{},
 			},
+			TrackerAccessControl: models.TrackerAccessControlConfig{
+				Enabled:         false,
+				AllowAll:        true,
+				AllowedTrackers: []string{},
+			},
 		}
 		if err := cm.SaveServerRuntimeConfig(filePath, defaultConfig); err != nil {
 			return nil, err

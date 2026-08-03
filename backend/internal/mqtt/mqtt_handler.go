@@ -148,6 +148,21 @@ func (h *MQTTHandler) handleMQTTMessage(msg MQTT.Message) {
 		// Ignore non-relevant measurements
 		return
 	}
+	if h.runtimeConfig != nil {
+		policy := h.runtimeConfig.TrackerAccessControl
+		if policy.Enabled && !policy.AllowAll {
+			allowed := false
+			for _, allowedTracker := range policy.AllowedTrackers {
+				if allowedTracker == deviceEUI {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return
+			}
+		}
+	}
 
 	// Process the payload
 	if h.messageHandler != nil {

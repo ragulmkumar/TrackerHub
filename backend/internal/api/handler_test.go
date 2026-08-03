@@ -66,6 +66,10 @@ func TestValidateServerRuntimeConfig(t *testing.T) {
 		},
 		Kalman:            models.KalmanParams{ProcessVariance: 1.0, MeasurementVariance: 10.0},
 		AllowAreaLocation: true,
+		TrackerAccessControl: models.TrackerAccessControlConfig{
+			Enabled:         true,
+			AllowedTrackers: []string{"2CF7F1C0530004AD", "2CF7F1C070300008"},
+		},
 	}
 
 	if err := handler.ValidateServerRuntimeConfig(valid); err != nil {
@@ -95,5 +99,24 @@ func TestValidateServerRuntimeConfig(t *testing.T) {
 
 	if err := handler.ValidateServerRuntimeConfig(enabledWithoutRegion); err == nil {
 		t.Fatalf("expected runtime config to require a server region when MQTT is enabled")
+	}
+
+	invalidTrackerAccess := &models.ServerRuntimeConfig{
+		Server: models.WebServerConfig{Port: 8022},
+		MQTT: models.MQTTServerConfig{
+			BrokerPort:    1883,
+			ApplicationID: "app-01",
+			TopicPattern:  "tracker/+/event",
+			ServerRegion:  "eu",
+		},
+		Kalman: models.KalmanParams{ProcessVariance: 1.0, MeasurementVariance: 10.0},
+		TrackerAccessControl: models.TrackerAccessControlConfig{
+			Enabled:         true,
+			AllowedTrackers: []string{"not-a-valid-eui"},
+		},
+	}
+
+	if err := handler.ValidateServerRuntimeConfig(invalidTrackerAccess); err == nil {
+		t.Fatalf("expected invalid tracker access control list to fail validation")
 	}
 }

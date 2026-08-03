@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -160,6 +161,17 @@ func (h *APIHandler) ValidateServerRuntimeConfig(config *models.ServerRuntimeCon
 			return fmt.Errorf("webhook host URL must be a valid http or https URL")
 		}
 	}
+	if config.TrackerAccessControl.Enabled {
+		if !config.TrackerAccessControl.AllowAll && len(config.TrackerAccessControl.AllowedTrackers) == 0 {
+			return fmt.Errorf("at least one tracker ID is required when access control is enabled and allow all is off")
+		}
+		trackerEUIPattern := regexp.MustCompile(`^[A-Fa-f0-9]{8,16}$`)
+		for _, trackerID := range config.TrackerAccessControl.AllowedTrackers {
+			if !trackerEUIPattern.MatchString(trackerID) {
+				return fmt.Errorf("tracker access list entries must be valid hexadecimal EUI values")
+			}
+		}
+	}
 	return nil
 }
 
@@ -198,6 +210,11 @@ func (h *APIHandler) PostTrackerUpdate(c *gin.Context) {
 		return
 	}
 
+	if !h.IsTrackerAllowed(update.TrackerID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Tracker update rejected by access control policy"})
+		return
+	}
+
 	h.ApplyTrackerUpdatePayload(update)
 	c.JSON(http.StatusOK, gin.H{"message": "Tracker update accepted"})
 }
@@ -220,6 +237,27 @@ func (h *APIHandler) UpsertTrackerState(trackerID string, coordinates []float64,
 	}
 
 	h.trackerStates[trackerID] = state
+}
+
+// IsTrackerAllowed checks whether a tracker ID is accepted by the runtime access policy.
+func (h *APIHandler) IsTrackerAllowed(trackerID string) bool {
+	runtimeConfig, err := h.configManager.LoadServerRuntimeConfig("config/server_runtime_config.json")
+	if err != nil {
+		return true
+	}
+	policy := runtimeConfig.TrackerAccessControl
+	if !policy.Enabled {
+		return true
+	}
+	if policy.AllowAll {
+		return true
+	}
+	for _, allowed := range policy.AllowedTrackers {
+		if allowed == trackerID {
+			return true
+		}
+	}
+	return false
 }
 
 // ApplyTrackerUpdatePayload applies a tracker update request to the in-memory tracker state.
