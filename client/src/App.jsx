@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import ConfigurationPage from "./pages/ConfigurationPage";
 import MonitorPage from "./pages/MonitorPage";
+import TrackerModePage from "./pages/TrackerModePage";
 
 function App() {
   return (
@@ -32,6 +33,14 @@ function App() {
           element={
             <ProtectedRoute>
               <MonitorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tracker-mode"
+          element={
+            <ProtectedRoute>
+              <TrackerModePage />
             </ProtectedRoute>
           }
         />
