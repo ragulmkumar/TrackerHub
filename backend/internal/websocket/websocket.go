@@ -88,6 +88,22 @@ func (h *Hub) BroadcastMessage(message interface{}) {
 	h.broadcast <- jsonData
 }
 
+// BroadcastInitialState sends the current trackers snapshot to all connected clients.
+func (h *Hub) BroadcastInitialState(snapshot map[string]interface{}) {
+	h.BroadcastMessage(map[string]interface{}{
+		"type": "initial_state",
+		"data": snapshot,
+	})
+}
+
+// BroadcastMQTTStatus sends the latest MQTT status to all connected clients.
+func (h *Hub) BroadcastMQTTStatus(status string) {
+	h.BroadcastMessage(map[string]interface{}{
+		"type": "mqtt_status_update",
+		"data": map[string]string{"status": status},
+	})
+}
+
 // HandleWebSocket handles a new WebSocket connection
 func HandleWebSocket(conn *websocket.Conn, hub *Hub) {
 	client := &Client{

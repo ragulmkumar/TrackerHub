@@ -107,34 +107,53 @@ func main() {
 	mqttHandler := mqtt.NewMQTTHandler(&startupRuntimeConfig.MQTT, webUIConfig, runtimeConfigStore)
 	wsHub := ws.NewHub()
 
-	// Set up MQTT message handler
 	mqttHandler.SetMessageHandler(func(report *models.TrackerReport) {
 		if report == nil {
 			return
 		}
 
-		// Calculate position
 		position := positioningService.CalculatePosition(report.DetectedBeacons, webUIConfig, nil)
-		if position != nil {
-			// Create tracker update message
-			trackerData := map[string]interface{}{
-				"trackerId": report.TrackerID,
-				"position": map[string]float64{
-					"x": position[0],
-					"y": position[1],
-				},
-				"timestamp": time.Now().UnixMilli(),
-			}
-
-			message := map[string]interface{}{
-				"type": "tracker_update",
-				"data": map[string]interface{}{
-					report.TrackerID: trackerData,
-				},
-			}
-
-			wsHub.BroadcastMessage(message)
+		if position == nil {
+			return
 		}
+
+		timestamp := time.Now().UnixMilli()
+		trackerCoords := []float64{position[0], position[1]}
+		accuracy := 0.0
+		apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, &accuracy)
+
+		trackerData := map[string]interface{}{
+			"trackerId": report.TrackerID,
+			"timestamp": timestamp,
+			"position": map[string]float64{
+				"x": position[0],
+				"y": position[1],
+			},
+			"accuracy":              accuracy,
+			"last_detected_beacons": report.DetectedBeacons,
+			"position_history":      apiHandler.GetTrackerSnapshot()[report.TrackerID].PositionHistory,
+		}
+
+		message := map[string]interface{}{
+			"type": "tracker_update",
+			"data": map[string]interface{}{
+				report.TrackerID: trackerData,
+			},
+		}
+
+		wsHub.BroadcastMessage(message)
+	})
+
+	mqttHandler.SetErrorHandler(func(err error) {
+		if err == nil {
+			wsHub.BroadcastMQTTStatus("connected")
+			return
+		}
+		status := mqttHandler.GetConnectionStatus()
+		if status == "" {
+			status = "error"
+		}
+		wsHub.BroadcastMQTTStatus(status)
 	})
 
 	// Connect to MQTT if enabled

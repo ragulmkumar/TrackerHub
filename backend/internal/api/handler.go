@@ -199,6 +199,28 @@ func (h *APIHandler) GetTrackers(c *gin.Context) {
 	c.JSON(http.StatusOK, trackers)
 }
 
+// GetTrackerSnapshot returns the current tracker state in the WebSocket-facing contract.
+func (h *APIHandler) GetTrackerSnapshot() map[string]models.TrackerLiveState {
+	h.trackerMu.RLock()
+	defer h.trackerMu.RUnlock()
+
+	snapshot := make(map[string]models.TrackerLiveState, len(h.trackerStates))
+	for id, state := range h.trackerStates {
+		trackerSnapshot := models.TrackerLiveState{
+			TrackerID:           id,
+			Timestamp:           state.LastUpdateTime,
+			Accuracy:            state.Accuracy,
+			LastDetectedBeacons: state.LastDetectedBeacons,
+			PositionHistory:     state.PositionHistory,
+		}
+		if state.X != nil && state.Y != nil {
+			trackerSnapshot.Position = &models.TrackerPosition{X: *state.X, Y: *state.Y}
+		}
+		snapshot[id] = trackerSnapshot
+	}
+	return snapshot
+}
+
 // PostTrackerUpdate godoc
 // @Summary Add or update a tracker position
 // @Description Stores a tracker position update for the live monitor view
@@ -226,19 +248,28 @@ func (h *APIHandler) PostTrackerUpdate(c *gin.Context) {
 
 // UpsertTrackerState stores or updates the last known state for a tracker.
 func (h *APIHandler) UpsertTrackerState(trackerID string, coordinates []float64, timestamp int64) {
+	h.UpsertTrackerStateWithData(trackerID, coordinates, timestamp, nil, nil)
+}
+
+// UpsertTrackerStateWithData stores or updates the last known state for a tracker and optionally enriches it.
+func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []float64, timestamp int64, detectedBeacons []models.DetectedBeacon, accuracy *float64) {
 	h.trackerMu.Lock()
 	defer h.trackerMu.Unlock()
 
 	state := h.trackerStates[trackerID]
 	state.TrackerID = trackerID
 	state.LastUpdateTime = timestamp
+	state.Accuracy = accuracy
+	if len(detectedBeacons) > 0 {
+		state.LastDetectedBeacons = detectedBeacons
+	}
 	if len(coordinates) >= 2 {
 		state.X = &coordinates[0]
 		state.Y = &coordinates[1]
-	}
-	state.PositionHistory = append(state.PositionHistory, [3]float64{coordinates[0], coordinates[1], float64(timestamp)})
-	if len(state.PositionHistory) > 20 {
-		state.PositionHistory = state.PositionHistory[len(state.PositionHistory)-20:]
+		state.PositionHistory = append(state.PositionHistory, [3]float64{coordinates[0], coordinates[1], float64(timestamp)})
+		if len(state.PositionHistory) > 20 {
+			state.PositionHistory = state.PositionHistory[len(state.PositionHistory)-20:]
+		}
 	}
 
 	h.trackerStates[trackerID] = state

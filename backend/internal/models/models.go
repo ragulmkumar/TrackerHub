@@ -20,10 +20,39 @@ type TrackerState struct {
 	TrackerID                string           `json:"trackerId"`
 	X                        *float64         `json:"x,omitempty"`
 	Y                        *float64         `json:"y,omitempty"`
+	Accuracy                 *float64         `json:"accuracy,omitempty"`
 	LastUpdateTime           int64            `json:"lastUpdateTime" validate:"required,gte=0"`
 	LastKnownMeasurementTime *int64           `json:"lastKnownMeasurementTime,omitempty"`
 	LastDetectedBeacons      []DetectedBeacon `json:"lastDetectedBeacons,omitempty"`
 	PositionHistory          [][3]float64     `json:"positionHistory,omitempty"` // [x, y, timestamp]
+}
+
+// TrackerPosition represents a tracker position payload sent through WebSocket.
+type TrackerPosition struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// TrackerLiveState is the WebSocket-facing live contract used by the tracker-mode UI.
+type TrackerLiveState struct {
+	TrackerID           string           `json:"trackerId"`
+	Timestamp           int64            `json:"timestamp"`
+	Position            *TrackerPosition `json:"position,omitempty"`
+	Accuracy            *float64         `json:"accuracy,omitempty"`
+	LastDetectedBeacons []DetectedBeacon `json:"last_detected_beacons,omitempty"`
+	PositionHistory     [][3]float64     `json:"position_history,omitempty"`
+}
+
+// TrackerWebSocketMessage is the typed envelope sent over the WebSocket.
+type TrackerWebSocketMessage struct {
+	Type string                      `json:"type"`
+	Data map[string]TrackerLiveState `json:"data"`
+}
+
+// MQTTStatusMessage is a WebSocket message carrying the live MQTT status.
+type MQTTStatusMessage struct {
+	Type string            `json:"type"`
+	Data map[string]string `json:"data"`
 }
 
 // WebUIBeaconConfig represents a beacon configuration for the web UI
