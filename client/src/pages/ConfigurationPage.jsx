@@ -5,6 +5,7 @@ import AuthenticationCard from "../components/AuthenticationCard";
 import ChirpStackConfigCard from "../components/ChirpStackConfigCard";
 import SenseCapConfigCard from "../components/SenseCapConfigCard";
 import ServerRuntimeCard from "../components/ServerRuntimeCard";
+import WebhookConfigCard from "../components/WebhookConfigCard";
 import {
   loadWebConfiguration,
   saveWebConfiguration,
@@ -185,6 +186,7 @@ export default function ConfigurationPage() {
             <AuthenticationCard />
             <ServerRuntimeCard />
             <AreaLocationConfigCard />
+            <WebhookConfigCard />
             <SenseCapConfigCard />
             <ChirpStackConfigCard />
 

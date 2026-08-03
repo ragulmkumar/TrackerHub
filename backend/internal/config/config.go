@@ -40,6 +40,11 @@ func (cm *ConfigManager) LoadServerRuntimeConfig(filePath string) (*models.Serve
 				MeasurementVariance: 10.0,
 			},
 			AllowAreaLocation: false,
+			Webhook: models.WebhookConfig{
+				Enabled: false,
+				HostURL: "",
+				Headers: map[string]string{},
+			},
 		}
 		if err := cm.SaveServerRuntimeConfig(filePath, defaultConfig); err != nil {
 			return nil, err

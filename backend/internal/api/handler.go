@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -146,6 +147,18 @@ func (h *APIHandler) ValidateServerRuntimeConfig(config *models.ServerRuntimeCon
 	}
 	if config.MQTT.Enabled && config.MQTT.TopicPattern == "" {
 		return fmt.Errorf("topic pattern is required when MQTT is enabled")
+	}
+	if config.Webhook.Enabled {
+		if config.Webhook.HostURL == "" {
+			return fmt.Errorf("webhook host URL is required when webhook is enabled")
+		}
+		parsedURL, err := url.ParseRequestURI(config.Webhook.HostURL)
+		if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+			return fmt.Errorf("webhook host URL must be a valid http or https URL")
+		}
+		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+			return fmt.Errorf("webhook host URL must be a valid http or https URL")
+		}
 	}
 	return nil
 }

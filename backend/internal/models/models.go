@@ -74,6 +74,7 @@ type ServerRuntimeConfig struct {
 	Server            WebServerConfig  `json:"server"`
 	Kalman            KalmanParams     `json:"kalman"`
 	AllowAreaLocation bool             `json:"allowAreaLocation,omitempty"`
+	Webhook           WebhookConfig    `json:"webhook"`
 }
 
 // MQTTServerConfig holds MQTT connection settings
@@ -99,6 +100,13 @@ type WebServerConfig struct {
 type KalmanParams struct {
 	ProcessVariance     float64 `json:"processVariance" validate:"required,gte=0"`     // Kalman filter process variance Q
 	MeasurementVariance float64 `json:"measurementVariance" validate:"required,gte=0"` // Kalman filter measurement variance R
+}
+
+// WebhookConfig stores optional outbound webhook settings.
+type WebhookConfig struct {
+	Enabled bool              `json:"enabled"`
+	HostURL string            `json:"hostUrl,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 type AuthConfig struct {
