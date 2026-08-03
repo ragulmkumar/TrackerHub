@@ -51,11 +51,11 @@ func main() {
 	configManager := config.NewConfigManager()
 
 	// Load configurations
-	runtimeConfig, err := configManager.LoadServerRuntimeConfig("config/server_runtime_config.json")
+	runtimeConfigStore, err := config.NewRuntimeConfigStore(configManager, "config/server_runtime_config.json")
 	if err != nil {
 		log.Printf("Warning: Failed to load server runtime config: %v", err)
 		// Create a default runtime config
-		runtimeConfig = &models.ServerRuntimeConfig{
+		runtimeConfig := &models.ServerRuntimeConfig{
 			MQTT: models.MQTTServerConfig{
 				BrokerHost:    "127.0.0.1",
 				BrokerPort:    1883,
@@ -71,6 +71,12 @@ func main() {
 				MeasurementVariance: 10.0,
 			},
 		}
+		runtimeConfigStore = &config.RuntimeConfigStore{}
+		runtimeConfigStore.Set(runtimeConfig)
+	}
+	startupRuntimeConfig := runtimeConfigStore.Get()
+	if startupRuntimeConfig == nil {
+		startupRuntimeConfig = &models.ServerRuntimeConfig{}
 	}
 
 	webUIConfig, err := configManager.LoadWebUIConfig("config/web_config.json")
@@ -87,7 +93,7 @@ func main() {
 	}
 
 	// Initialize components
-	apiHandler := api.NewAPIHandler(configManager)
+	apiHandler := api.NewAPIHandler(configManager, runtimeConfigStore)
 	authHandler, err := api.NewAuthHandler(configManager)
 	if err != nil {
 		log.Fatalf("Failed to initialize auth handler: %v", err)
@@ -98,7 +104,7 @@ func main() {
 	}
 	authService := auth.NewAuthService(*authConfig)
 	positioningService := positioning.NewPositioningService()
-	mqttHandler := mqtt.NewMQTTHandler(&runtimeConfig.MQTT, webUIConfig, runtimeConfig)
+	mqttHandler := mqtt.NewMQTTHandler(&startupRuntimeConfig.MQTT, webUIConfig, runtimeConfigStore)
 	wsHub := ws.NewHub()
 
 	// Set up MQTT message handler
@@ -132,7 +138,7 @@ func main() {
 	})
 
 	// Connect to MQTT if enabled
-	if runtimeConfig.MQTT.Enabled {
+	if startupRuntimeConfig.MQTT.Enabled {
 		if err := mqttHandler.Connect(); err != nil {
 			log.Printf("Failed to connect to MQTT: %v", err)
 		} else {
@@ -182,15 +188,15 @@ func main() {
 	})
 
 	// Start HTTP server
-	serverAddr := ":" + strconv.Itoa(runtimeConfig.Server.Port)
+	serverAddr := ":" + strconv.Itoa(startupRuntimeConfig.Server.Port)
 	go func() {
 		if err := router.Run(serverAddr); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
 
-	log.Printf("Server started on port %d", runtimeConfig.Server.Port)
-	log.Printf("Swagger UI available at http://localhost:%d/swagger/index.html", runtimeConfig.Server.Port)
+	log.Printf("Server started on port %d", startupRuntimeConfig.Server.Port)
+	log.Printf("Swagger UI available at http://localhost:%d/swagger/index.html", startupRuntimeConfig.Server.Port)
 
 	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)

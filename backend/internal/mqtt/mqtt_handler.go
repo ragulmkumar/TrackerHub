@@ -9,6 +9,7 @@ import (
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 
+	"trackerHub/backend/internal/config"
 	"trackerHub/backend/internal/models"
 )
 
@@ -17,14 +18,14 @@ type MQTTHandler struct {
 	client           MQTT.Client
 	config           *models.MQTTServerConfig
 	webUIConfig      *models.WebUIConfig
-	runtimeConfig    *models.ServerRuntimeConfig
+	runtimeConfig    *config.RuntimeConfigStore
 	messageHandler   func(*models.TrackerReport)
 	errorHandler     func(error)
 	connectionStatus string // "connected", "disconnected", "connecting"
 }
 
 // NewMQTTHandler creates a new MQTT handler
-func NewMQTTHandler(config *models.MQTTServerConfig, webUIConfig *models.WebUIConfig, runtimeConfig *models.ServerRuntimeConfig) *MQTTHandler {
+func NewMQTTHandler(config *models.MQTTServerConfig, webUIConfig *models.WebUIConfig, runtimeConfig *config.RuntimeConfigStore) *MQTTHandler {
 	return &MQTTHandler{
 		config:           config,
 		webUIConfig:      webUIConfig,
@@ -149,17 +150,20 @@ func (h *MQTTHandler) handleMQTTMessage(msg MQTT.Message) {
 		return
 	}
 	if h.runtimeConfig != nil {
-		policy := h.runtimeConfig.TrackerAccessControl
-		if policy.Enabled && !policy.AllowAll {
-			allowed := false
-			for _, allowedTracker := range policy.AllowedTrackers {
-				if allowedTracker == deviceEUI {
-					allowed = true
-					break
+		currentConfig := h.runtimeConfig.Get()
+		if currentConfig != nil {
+			policy := currentConfig.TrackerAccessControl
+			if policy.Enabled && !policy.AllowAll {
+				allowed := false
+				for _, allowedTracker := range policy.AllowedTrackers {
+					if allowedTracker == deviceEUI {
+						allowed = true
+						break
+					}
 				}
-			}
-			if !allowed {
-				return
+				if !allowed {
+					return
+				}
 			}
 		}
 	}

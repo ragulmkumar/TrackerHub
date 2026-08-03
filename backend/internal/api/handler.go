@@ -15,16 +15,18 @@ import (
 
 // APIHandler handles HTTP API requests
 type APIHandler struct {
-	configManager *config.ConfigManager
-	trackerStates map[string]models.TrackerState
-	trackerMu     sync.RWMutex
+	configManager      *config.ConfigManager
+	runtimeConfigStore *config.RuntimeConfigStore
+	trackerStates      map[string]models.TrackerState
+	trackerMu          sync.RWMutex
 }
 
 // NewAPIHandler creates a new API handler
-func NewAPIHandler(configManager *config.ConfigManager) *APIHandler {
+func NewAPIHandler(configManager *config.ConfigManager, runtimeConfigStore *config.RuntimeConfigStore) *APIHandler {
 	return &APIHandler{
-		configManager: configManager,
-		trackerStates: make(map[string]models.TrackerState),
+		configManager:      configManager,
+		runtimeConfigStore: runtimeConfigStore,
+		trackerStates:      make(map[string]models.TrackerState),
 	}
 }
 
@@ -116,6 +118,9 @@ func (h *APIHandler) UpdateServerRuntimeConfig(c *gin.Context) {
 	if err := h.configManager.SaveServerRuntimeConfig("config/server_runtime_config.json", &config); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save server runtime configuration"})
 		return
+	}
+	if h.runtimeConfigStore != nil {
+		h.runtimeConfigStore.Set(&config)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Server runtime configuration updated successfully"})
@@ -241,8 +246,8 @@ func (h *APIHandler) UpsertTrackerState(trackerID string, coordinates []float64,
 
 // IsTrackerAllowed checks whether a tracker ID is accepted by the runtime access policy.
 func (h *APIHandler) IsTrackerAllowed(trackerID string) bool {
-	runtimeConfig, err := h.configManager.LoadServerRuntimeConfig("config/server_runtime_config.json")
-	if err != nil {
+	runtimeConfig := h.runtimeConfigStore.Get()
+	if runtimeConfig == nil {
 		return true
 	}
 	policy := runtimeConfig.TrackerAccessControl
