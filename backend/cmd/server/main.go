@@ -108,6 +108,11 @@ func main() {
 	mqttHandler := mqtt.NewMQTTHandler(&startupRuntimeConfig.MQTT, webUIConfig, runtimeConfigStore)
 	wsHub := ws.NewHub()
 
+	// Start the WebSocket hub event loop BEFORE any broadcast can be issued.
+	// Broadcast* sends into an unbuffered channel that only Run() consumes;
+	// sending before this goroutine starts would block forever and deadlock.
+	go wsHub.Run()
+
 	mqttHandler.SetMessageHandler(func(report *models.TrackerReport) {
 		if report == nil {
 			return
@@ -181,9 +186,6 @@ func main() {
 	} else {
 		wsHub.BroadcastMQTTStatus("disabled")
 	}
-
-	// Start WebSocket hub
-	go wsHub.Run()
 
 	// Set up HTTP server
 	router := gin.Default()
