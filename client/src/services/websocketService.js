@@ -155,10 +155,14 @@ class WebSocketService {
       if (!value || typeof value !== "object") {
         return;
       }
+      const { last_detected_beacons, ...rest } = value;
       nextTrackers[id] = {
         ...nextTrackers[id],
-        ...value,
+        ...rest,
         trackerId: id,
+        ...(last_detected_beacons
+          ? { lastDetectedBeacons: last_detected_beacons }
+          : {}),
       };
     });
     this.trackers = nextTrackers;

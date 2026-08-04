@@ -1,148 +1,477 @@
-import { useAuth } from "../contexts/AuthContext";
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  loadWebConfiguration,
+  loadServerRuntimeConfiguration,
+} from "../services/configApiService";
+import websocketService from "../services/websocketService";
+import LiveMap from "../components/LiveMap";
+import TrackerList from "../components/TrackerList";
 import colorPalette from "../themes/colorPalette";
 
+/* ------------------------------------------------------------------ */
+/* Status metadata for the live connection pills                       */
+/* ------------------------------------------------------------------ */
+const STATUS_META = {
+  connected: {
+    label: "Connected",
+    color: colorPalette.success.main,
+    bg: `${colorPalette.success.main}14`,
+  },
+  connecting: {
+    label: "Connecting",
+    color: colorPalette.info.main,
+    bg: `${colorPalette.info.main}14`,
+  },
+  disconnected: {
+    label: "Disconnected",
+    color: colorPalette.text.secondary,
+    bg: `${colorPalette.text.secondary}14`,
+  },
+  disabled: {
+    label: "Disabled",
+    color: colorPalette.warning.dark,
+    bg: `${colorPalette.warning.main}16`,
+  },
+  error: {
+    label: "Error",
+    color: colorPalette.error.main,
+    bg: `${colorPalette.error.main}14`,
+  },
+  offline: {
+    label: "Offline",
+    color: colorPalette.text.disabled,
+    bg: `${colorPalette.text.disabled}14`,
+  },
+  unknown: {
+    label: "Unknown",
+    color: colorPalette.text.disabled,
+    bg: `${colorPalette.text.disabled}14`,
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* Small building blocks                                               */
+/* ------------------------------------------------------------------ */
+function GlassCard({ children, className = "" }) {
+  return (
+    <div
+      className={`rounded-3xl p-6 transition-all duration-300 ${className}`}
+      style={{
+        background: "rgba(255, 255, 255, 0.55)",
+        backdropFilter: "blur(14px) saturate(160%)",
+        WebkitBackdropFilter: "blur(14px) saturate(160%)",
+        border: "1px solid rgba(255, 255, 255, 0.7)",
+        boxShadow: "0 10px 40px -18px rgba(0, 0, 0, 0.08)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({ title, subtitle }) {
+  return (
+    <div className="mb-4">
+      <h2
+        className="text-lg font-semibold"
+        style={{ color: colorPalette.text.primary }}
+      >
+        {title}
+      </h2>
+      {subtitle && (
+        <p
+          className="mt-0.5 text-sm"
+          style={{ color: colorPalette.text.secondary }}
+        >
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function StatusPill({ status }) {
+  const meta = STATUS_META[status] || STATUS_META.unknown;
+  return (
+    <span
+      className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold"
+      style={{ backgroundColor: meta.bg, color: meta.color }}
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full animate-pulse"
+        style={{ backgroundColor: meta.color }}
+      />
+      {meta.label}
+    </span>
+  );
+}
+
+function StatCard({ label, value, sub, icon, color }) {
+  return (
+    <div className="rounded-2xl p-5 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg">
+      <div
+        className="flex h-full flex-col justify-between gap-3 rounded-2xl p-5"
+        style={{
+          background: "rgba(255, 255, 255, 0.55)",
+          backdropFilter: "blur(12px) saturate(160%)",
+          WebkitBackdropFilter: "blur(12px) saturate(160%)",
+          border: "1px solid rgba(255, 255, 255, 0.7)",
+          boxShadow: "0 8px 32px -16px rgba(0, 0, 0, 0.08)",
+        }}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <p
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{ color: colorPalette.text.secondary }}
+            >
+              {label}
+            </p>
+            <p
+              className="mt-1 text-2xl font-bold"
+              style={{ color: colorPalette.text.primary }}
+            >
+              {value}
+            </p>
+            {sub && (
+              <p
+                className="mt-0.5 text-xs"
+                style={{ color: colorPalette.text.disabled }}
+              >
+                {sub}
+              </p>
+            )}
+          </div>
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+            style={{
+              backgroundColor: `${color}14`,
+              border: `1px solid ${color}20`,
+              color,
+            }}
+          >
+            {icon}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfigRow({ label, value, accent = false }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2">
+      <span className="text-sm" style={{ color: colorPalette.text.secondary }}>
+        {label}
+      </span>
+      <span
+        className="text-sm font-semibold"
+        style={{
+          color: accent ? colorPalette.primary.main : colorPalette.text.primary,
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* SVG icons (stroke style consistent with the rest of the app)        */
+/* ------------------------------------------------------------------ */
+const Icons = {
+  trackers: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3a9 9 0 109 9" />
+      <path d="M12 21V12" />
+      <path d="M12 12L18 6" />
+    </svg>
+  ),
+  located: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0116 0z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  ),
+  beacons: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2 4h20v14H2z" />
+      <path d="M7 21h10" />
+      <circle cx="12" cy="10" r="2.5" />
+      <path d="M12 3a7 7 0 000 14" />
+    </svg>
+  ),
+  mqtt: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 9l3 3-3 3" />
+      <path d="M13 15h6" />
+      <circle cx="12" cy="12" r="10" />
+    </svg>
+  ),
+  engine: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 20V10M10 20V4M16 20v-8M22 20V7" />
+    </svg>
+  ),
+  settings: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </svg>
+  ),
+  chart: (
+    <svg
+      className="h-5 w-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 3v18h18" />
+      <path d="M8 17V9M13 17V5M18 17v-7" />
+    </svg>
+  ),
+};
+
+/* ------------------------------------------------------------------ */
+/* Dashboard                                                           */
+/* ------------------------------------------------------------------ */
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [stats] = useState({
-    totalTrackers: 24,
-    activeTrackers: 18,
-    alerts: 3,
-    systemHealth: "98.5%",
-  });
 
+  const [mapConfig, setMapConfig] = useState(null);
+  const [runtimeConfig, setRuntimeConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [trackers, setTrackers] = useState([]);
+  const [wsStatus, setWsStatus] = useState("offline");
+  const [mqttStatus, setMqttStatus] = useState("disconnected");
+  const [showTrails, setShowTrails] = useState(true);
+
+  /* Clock for the header */
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const formatDate = (date) => {
-    return date.toLocaleDateString("en-US", {
+  const formatDate = (date) =>
+    date.toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
     });
-  };
 
-  const formatTime = (date) => {
-    return date.toLocaleTimeString("en-US", {
+  const formatTime = (date) =>
+    date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     });
-  };
+
+  /* Load the configured map/beacons and server runtime settings */
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const [webConfig, runtime] = await Promise.all([
+          loadWebConfiguration(),
+          loadServerRuntimeConfiguration(),
+        ]);
+        if (!isMounted) return;
+        setMapConfig(webConfig);
+        setRuntimeConfig(runtime);
+      } catch (err) {
+        if (!isMounted) return;
+        setError(err.message || "Unable to load configuration.");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  /* Live WebSocket feed for tracker positions + connection status */
+  useEffect(() => {
+    websocketService.connect();
+    const listener = ({
+      trackers: trackerMap,
+      wsStatus: socketStatus,
+      mqttStatus: mqttState,
+    }) => {
+      setTrackers(Object.values(trackerMap));
+      setWsStatus(socketStatus);
+      setMqttStatus(mqttState);
+    };
+
+    websocketService.subscribe(listener);
+    return () => {
+      websocketService.unsubscribe(listener);
+      websocketService.disconnect();
+    };
+  }, []);
+
+  /* Gate tracker updates on whether MQTT is actually enabled */
+  const mqttEnabled = runtimeConfig?.mqtt?.enabled;
+  useEffect(() => {
+    if (runtimeConfig == null) {
+      websocketService.setMQTTEnabled(null);
+      return;
+    }
+    websocketService.setMQTTEnabled(mqttEnabled !== false);
+    if (mqttEnabled === false) setTrackers([]);
+  }, [runtimeConfig, mqttEnabled]);
+
+  /* Derived metrics — all from live/config data, nothing hardcoded */
+  const totalTrackers = trackers.length;
+  const locatedTrackers = trackers.filter(
+    (t) => t.position?.x != null && t.position?.y != null,
+  ).length;
+  const beacons = mapConfig?.beacons || [];
+  const beaconCount = beacons.length;
+  const mapInfo = mapConfig?.map;
+  const signalFactor = mapConfig?.settings?.signalPropagationFactor;
+  const kalman = runtimeConfig?.kalman;
+  const mqtt = runtimeConfig?.mqtt;
+
+  const effectiveMqttStatus = useMemo(() => {
+    if (mqttEnabled === false) return "disabled";
+    if (mqttEnabled !== true) return mqttStatus;
+    if (mqttStatus === "connected") return "connected";
+    if (mqttStatus === "connecting") return "connecting";
+    if (mqttStatus === "disconnected") return "disconnected";
+    if (mqttStatus === "error") return "error";
+    return "unknown";
+  }, [mqttEnabled, mqttStatus]);
+
+  const latestTracker = useMemo(
+    () =>
+      trackers
+        .filter((t) => t.timestamp || t.lastUpdateTime)
+        .sort(
+          (a, b) =>
+            (b.timestamp || b.lastUpdateTime) -
+            (a.timestamp || a.lastUpdateTime),
+        )[0],
+    [trackers],
+  );
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4 py-8 relative overflow-hidden"
+      className="min-h-screen px-4 py-8 relative overflow-hidden"
       style={{
         background: `linear-gradient(135deg, ${colorPalette.background.default} 0%, ${colorPalette.background.paper} 100%)`,
       }}
     >
-      {/* Animated Background Orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {/* Ambient background orbs */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
-          className="absolute top-[-10%] right-[-5%] w-125 h-125 rounded-full blur-3xl animate-float"
+          className="absolute top-[-10%] right-[-5%] h-125 w-125 rounded-full blur-3xl animate-float"
           style={{
             background: `radial-gradient(circle, ${colorPalette.primary.light}30, transparent 70%)`,
             animationDuration: "15s",
           }}
         />
         <div
-          className="absolute bottom-[-10%] left-[-5%] w-112.5 h-112.5 rounded-full blur-3xl animate-float-delayed"
+          className="absolute bottom-[-10%] left-[-5%] h-112.5 w-112.5 rounded-full blur-3xl animate-float-delayed"
           style={{
             background: `radial-gradient(circle, ${colorPalette.secondary.light}25, transparent 70%)`,
             animationDuration: "18s",
           }}
         />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-150 h-150 rounded-full blur-3xl"
-          style={{
-            background: `radial-gradient(circle, ${colorPalette.info.light}15, transparent 70%)`,
-          }}
-        />
-
-        {/* Floating Particles */}
-        {[...Array(15)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full animate-pulse-slow"
-            style={{
-              width: Math.random() * 4 + 2 + "px",
-              height: Math.random() * 4 + 2 + "px",
-              top: Math.random() * 100 + "%",
-              left: Math.random() * 100 + "%",
-              background:
-                i % 2 === 0
-                  ? colorPalette.primary.light
-                  : colorPalette.secondary.light,
-              opacity: Math.random() * 0.2 + 0.05,
-              animationDelay: Math.random() * 5 + "s",
-              animationDuration: Math.random() * 8 + 4 + "s",
-            }}
-          />
-        ))}
       </div>
 
-      {/* Main Container */}
-      <div className="w-full max-w-6xl relative z-10">
-        {/* Header Section */}
-        <div className="mb-8">
-          <div
-            className="rounded-3xl p-6 transition-all duration-500"
-            style={{
-              background: "rgba(255, 255, 255, 0.6)",
-              backdropFilter: "blur(20px) saturate(180%)",
-              WebkitBackdropFilter: "blur(20px) saturate(180%)",
-              border: "1px solid rgba(255, 255, 255, 0.8)",
-              boxShadow:
-                "0 20px 60px -20px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.5) inset",
-            }}
-          >
-            {/* Glass Reflection */}
-            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
-              <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-linear-to-br from-white/30 to-transparent rotate-12 blur-2xl" />
-            </div>
-
-            <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              {/* Left Side - Greeting */}
+      <div className="relative mx-auto max-w-7xl space-y-6">
+        {/* ------------------------------------------------ Header */}
+        <GlassCard>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div
+                className="flex h-12 w-12 items-center justify-center rounded-2xl"
+                style={{
+                  background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
+                  boxShadow: `0 6px 20px ${colorPalette.primary.main}35`,
+                }}
+              >
+                <svg
+                  className="h-6 w-6 text-white"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
               <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{
-                      background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
-                      boxShadow: `0 4px 16px ${colorPalette.primary.main}30`,
-                    }}
-                  >
-                    <svg
-                      className="w-5 h-5 text-white"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M12 2L2 7L12 12L22 7L12 2Z" />
-                      <path d="M2 17L12 22L22 17" />
-                      <path d="M2 12L12 17L22 12" />
-                    </svg>
-                  </div>
-                  <p
-                    className="text-xs font-medium uppercase tracking-widest"
-                    style={{ color: colorPalette.primary.main }}
-                  >
-                    Dashboard Overview
-                  </p>
-                </div>
+                <p
+                  className="text-xs font-semibold uppercase tracking-[0.3em]"
+                  style={{ color: colorPalette.primary.main }}
+                >
+                  Indoor Positioning Overview
+                </p>
                 <h1
-                  className="text-2xl md:text-3xl font-bold"
+                  className="text-2xl font-bold md:text-3xl"
                   style={{ color: colorPalette.text.primary }}
                 >
                   Welcome back,{" "}
@@ -150,7 +479,7 @@ const Dashboard = () => {
                     {user || "Admin"}
                   </span>
                 </h1>
-                <div className="flex items-center gap-3 mt-1">
+                <div className="mt-1 flex items-center gap-2">
                   <p
                     className="text-sm"
                     style={{ color: colorPalette.text.secondary }}
@@ -158,7 +487,7 @@ const Dashboard = () => {
                     {formatDate(currentTime)}
                   </p>
                   <span
-                    className="w-1 h-1 rounded-full"
+                    className="h-1 w-1 rounded-full"
                     style={{ backgroundColor: colorPalette.text.disabled }}
                   />
                   <p
@@ -169,388 +498,400 @@ const Dashboard = () => {
                   </p>
                 </div>
               </div>
+            </div>
 
-              {/* Right Side - Actions */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div
+                className="hidden items-center gap-2 rounded-xl px-3 py-2 sm:flex"
+                style={{
+                  backgroundColor: `${colorPalette.success.main}12`,
+                  border: `1px solid ${colorPalette.success.main}24`,
+                }}
+              >
+                <span
+                  className="h-2 w-2 rounded-full animate-pulse"
+                  style={{ backgroundColor: colorPalette.success.main }}
+                />
+                <span
+                  className="text-xs font-medium"
+                  style={{ color: colorPalette.success.dark }}
+                >
+                  Positioning engine{" "}
+                  {wsStatus === "connected" ? "online" : "pending"}
+                </span>
+              </div>
+              <Link
+                to="/monitor"
+                className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95"
+                style={{
+                  background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
+                  color: colorPalette.primary.contrastText,
+                  boxShadow: `0 4px 16px ${colorPalette.primary.main}30`,
+                }}
+              >
+                {Icons.chart}
+                Monitor
+              </Link>
+              <Link
+                to="/configuration"
+                className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95"
+                style={{
+                  background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
+                  color: colorPalette.primary.contrastText,
+                  boxShadow: `0 4px 16px ${colorPalette.primary.main}30`,
+                }}
+              >
+                {Icons.settings}
+                Configure
+              </Link>
+              <button
+                onClick={logout}
+                className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95"
+                style={{
+                  background: `linear-gradient(135deg, ${colorPalette.error.main}, ${colorPalette.error.dark})`,
+                  color: colorPalette.error.contrastText,
+                  boxShadow: `0 4px 16px ${colorPalette.error.main}30`,
+                }}
+              >
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Logout
+              </button>
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* ------------------------------------------------ Error banner */}
+        {error && (
+          <div
+            className="rounded-2xl border px-4 py-3 text-sm"
+            style={{
+              backgroundColor: `${colorPalette.error.main}10`,
+              borderColor: `${colorPalette.error.main}24`,
+              color: colorPalette.error.dark,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* ------------------------------------------------ Stat cards */}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard
+            label="Total Trackers"
+            value={totalTrackers}
+            sub={
+              latestTracker
+                ? `Last seen ${new Date(
+                    latestTracker.timestamp || latestTracker.lastUpdateTime,
+                  ).toLocaleTimeString()}`
+                : "Awaiting live updates"
+            }
+            icon={Icons.trackers}
+            color={colorPalette.primary.main}
+          />
+          <StatCard
+            label="Trackers Located"
+            value={locatedTrackers}
+            sub={`${totalTrackers === 0 ? 0 : Math.round((locatedTrackers / totalTrackers) * 100)}% positioned`}
+            icon={Icons.located}
+            color={colorPalette.success.main}
+          />
+          <StatCard
+            label="Beacons Configured"
+            value={beaconCount}
+            sub={
+              mapInfo ? `on ${mapInfo.name || "current map"}` : "no map loaded"
+            }
+            icon={Icons.beacons}
+            color={colorPalette.info.main}
+          />
+          <StatCard
+            label="MQTT Feed"
+            value={
+              mqttEnabled === false
+                ? "Off"
+                : effectiveMqttStatus === "connected"
+                  ? "Live"
+                  : "Idle"
+            }
+            sub={
+              mqttEnabled === false
+                ? "disabled in runtime settings"
+                : mqtt
+                  ? `${mqtt.brokerHost || "—"}:${mqtt.brokerPort || "—"}`
+                  : "—"
+            }
+            icon={Icons.mqtt}
+            color={
+              effectiveMqttStatus === "connected"
+                ? colorPalette.success.main
+                : mqttEnabled === false
+                  ? colorPalette.warning.main
+                  : colorPalette.text.secondary
+            }
+          />
+        </div>
+
+        {/* ------------------------------------------------ Live tracking */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Live map */}
+          <GlassCard className="lg:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <SectionTitle
+                title="Live position map"
+                subtitle={
+                  mapInfo
+                    ? `${mapInfo.name || "Unnamed map"} · ${mapInfo.width}m × ${mapInfo.height}m`
+                    : "Configured beacons and live tracker positions"
+                }
+              />
               <div className="flex items-center gap-3">
-                <div
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl"
-                  style={{
-                    backgroundColor: `${colorPalette.success.main}10`,
-                    border: `1px solid ${colorPalette.success.main}20`,
-                  }}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full animate-pulse"
-                    style={{ backgroundColor: colorPalette.success.main }}
-                  />
-                  <span
-                    className="text-xs font-medium"
-                    style={{ color: colorPalette.success.dark }}
-                  >
-                    System Online
-                  </span>
-                </div>
-                <Link
-                  to="/monitor"
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-2"
-                  style={{
-                    background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
-                    color: colorPalette.primary.contrastText,
-                    boxShadow: `0 4px 16px ${colorPalette.primary.main}30`,
-                  }}
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 12h2m14 0h2M4.2 4.2l1.4 1.4m13 13l1.4 1.4M4.2 19.8l1.4-1.4m13-13l1.4-1.4M12 3a9 9 0 100 18 9 9 0 000-18z"
-                    />
-                  </svg>
-                  Monitor
-                </Link>
-                <Link
-                  to="/configuration"
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-2"
-                  style={{
-                    background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
-                    color: colorPalette.primary.contrastText,
-                    boxShadow: `0 4px 16px ${colorPalette.primary.main}30`,
-                  }}
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                  </svg>
-                  Configure
-                </Link>
+                <StatusPill status={wsStatus} />
                 <button
-                  onClick={logout}
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-2"
+                  type="button"
+                  onClick={() => setShowTrails((cur) => !cur)}
+                  className="rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95"
                   style={{
-                    background: `linear-gradient(135deg, ${colorPalette.error.main}, ${colorPalette.error.dark})`,
-                    color: colorPalette.error.contrastText,
-                    boxShadow: `0 4px 16px ${colorPalette.error.main}30`,
+                    backgroundColor: "rgba(255,255,255,0.7)",
+                    color: colorPalette.text.primary,
+                    border: `1px solid ${colorPalette.divider}`,
                   }}
                 >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                    />
-                  </svg>
-                  Logout
+                  {showTrails ? "Hide trails" : "Show trails"}
                 </button>
               </div>
             </div>
-          </div>
+            <div className="overflow-hidden rounded-3xl border border-slate-700">
+              {loading ? (
+                <div className="flex h-96 items-center justify-center rounded-3xl bg-slate-950/80 text-slate-400">
+                  Loading configured map...
+                </div>
+              ) : (
+                <LiveMap
+                  mapConfig={mapConfig}
+                  beacons={beacons}
+                  trackers={trackers}
+                  showTrails={showTrails}
+                  wsStatus={wsStatus}
+                />
+              )}
+            </div>
+          </GlassCard>
+
+          {/* Live tracker list */}
+          <TrackerList trackers={trackers} />
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {[
-            {
-              label: "Total Trackers",
-              value: stats.totalTrackers,
-              icon: "📡",
-              color: colorPalette.primary.main,
-            },
-            {
-              label: "Active Trackers",
-              value: stats.activeTrackers,
-              icon: "📍",
-              color: colorPalette.success.main,
-            },
-            {
-              label: "Active Alerts",
-              value: stats.alerts,
-              icon: "⚠️",
-              color: colorPalette.warning.main,
-            },
-            {
-              label: "System Health",
-              value: stats.systemHealth,
-              icon: "💚",
-              color: colorPalette.info.main,
-            },
-          ].map((stat, index) => (
-            <div
-              key={index}
-              className="rounded-2xl p-5 transition-all duration-300 hover:scale-105 hover:shadow-lg"
-              style={{
-                background: "rgba(255, 255, 255, 0.5)",
-                backdropFilter: "blur(12px) saturate(160%)",
-                WebkitBackdropFilter: "blur(12px) saturate(160%)",
-                border: "1px solid rgba(255, 255, 255, 0.6)",
-                boxShadow: "0 8px 32px -12px rgba(0, 0, 0, 0.06)",
-              }}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p
-                    className="text-xs font-medium uppercase tracking-wider"
-                    style={{ color: colorPalette.text.secondary }}
-                  >
-                    {stat.label}
-                  </p>
-                  <p
-                    className="text-2xl font-bold mt-1"
-                    style={{ color: colorPalette.text.primary }}
-                  >
-                    {stat.value}
-                  </p>
-                </div>
+        {/* ------------------------------------------------ Config panels */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Positioning engine */}
+          <GlassCard>
+            <div className="mb-4 flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-xl"
+                style={{
+                  backgroundColor: `${colorPalette.primary.main}14`,
+                  color: colorPalette.primary.main,
+                }}
+              >
+                {Icons.engine}
+              </div>
+              <div>
+                <h2
+                  className="text-base font-semibold"
+                  style={{ color: colorPalette.text.primary }}
+                >
+                  Positioning Engine
+                </h2>
+                <p
+                  className="text-xs"
+                  style={{ color: colorPalette.text.secondary }}
+                >
+                  Multilateration + Kalman smoothing
+                </p>
+              </div>
+            </div>
+            <div className="divide-y divide-slate-200/70">
+              <ConfigRow
+                label="Signal factor (n)"
+                value={signalFactor != null ? `${signalFactor}` : "—"}
+                accent
+              />
+              <ConfigRow
+                label="Kalman process variance"
+                value={kalman?.processVariance ?? "—"}
+              />
+              <ConfigRow
+                label="Kalman measurement variance"
+                value={kalman?.measurementVariance ?? "—"}
+              />
+              <ConfigRow
+                label="Map"
+                value={
+                  mapInfo
+                    ? `${mapInfo.name || "Unnamed"} · ${mapInfo.width}×${mapInfo.height}m`
+                    : "Not configured"
+                }
+              />
+            </div>
+          </GlassCard>
+
+          {/* MQTT & connectivity */}
+          <GlassCard>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
                 <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl"
                   style={{
-                    backgroundColor: `${stat.color}15`,
-                    border: `1px solid ${stat.color}20`,
+                    backgroundColor: `${colorPalette.secondary.main}14`,
+                    color: colorPalette.secondary.dark,
                   }}
                 >
-                  {stat.icon}
+                  {Icons.mqtt}
+                </div>
+                <div>
+                  <h2
+                    className="text-base font-semibold"
+                    style={{ color: colorPalette.text.primary }}
+                  >
+                    MQTT Connectivity
+                  </h2>
+                  <p
+                    className="text-xs"
+                    style={{ color: colorPalette.text.secondary }}
+                  >
+                    Ingest for tracker reports
+                  </p>
                 </div>
               </div>
+              <StatusPill status={effectiveMqttStatus} />
             </div>
-          ))}
-        </div>
+            <div className="divide-y divide-slate-200/70">
+              <ConfigRow
+                label="Broker"
+                value={
+                  mqtt
+                    ? `${mqtt.brokerHost || "—"}:${mqtt.brokerPort || "—"}`
+                    : "—"
+                }
+              />
+              <ConfigRow
+                label="Application ID"
+                value={mqtt?.applicationID || "—"}
+              />
+              <ConfigRow
+                label="Topic pattern"
+                value={mqtt?.topicPattern || "—"}
+              />
+              <ConfigRow
+                label="Enabled"
+                value={mqttEnabled === false ? "No" : "Yes"}
+              />
+            </div>
+          </GlassCard>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Welcome Card */}
-            <div
-              className="rounded-3xl p-6 transition-all duration-500"
-              style={{
-                background: "rgba(255, 255, 255, 0.5)",
-                backdropFilter: "blur(12px) saturate(160%)",
-                WebkitBackdropFilter: "blur(12px) saturate(160%)",
-                border: "1px solid rgba(255, 255, 255, 0.6)",
-                boxShadow: "0 8px 32px -12px rgba(0, 0, 0, 0.06)",
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-3"
-                style={{ color: colorPalette.text.primary }}
+          {/* Quick actions */}
+          <GlassCard>
+            <div className="mb-4 flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-xl"
+                style={{
+                  backgroundColor: `${colorPalette.warning.main}14`,
+                  color: colorPalette.warning.dark,
+                }}
               >
-                🚀 Getting Started
-              </h2>
-              <p
-                className="text-sm leading-relaxed"
-                style={{ color: colorPalette.text.secondary }}
-              >
-                You are now authenticated and can extend this dashboard with
-                tracker state, MQTT controls, and live WebSocket updates. The
-                system is ready for real-time monitoring and management.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {[
-                  "Real-time Tracking",
-                  "MQTT Integration",
-                  "WebSocket Updates",
-                ].map((feature, idx) => (
-                  <span
-                    key={idx}
-                    className="px-3 py-1.5 rounded-xl text-xs font-medium"
-                    style={{
-                      backgroundColor: `${colorPalette.primary.main}10`,
-                      color: colorPalette.primary.main,
-                      border: `1px solid ${colorPalette.primary.main}15`,
-                    }}
-                  >
-                    {feature}
-                  </span>
-                ))}
+                {Icons.settings}
+              </div>
+              <div>
+                <h2
+                  className="text-base font-semibold"
+                  style={{ color: colorPalette.text.primary }}
+                >
+                  Workspace
+                </h2>
+                <p
+                  className="text-xs"
+                  style={{ color: colorPalette.text.secondary }}
+                >
+                  Jump into a module
+                </p>
               </div>
             </div>
-
-            {/* Activity/Recent Updates */}
-            <div
-              className="rounded-3xl p-6 transition-all duration-500"
-              style={{
-                background: "rgba(255, 255, 255, 0.5)",
-                backdropFilter: "blur(12px) saturate(160%)",
-                WebkitBackdropFilter: "blur(12px) saturate(160%)",
-                border: "1px solid rgba(255, 255, 255, 0.6)",
-                boxShadow: "0 8px 32px -12px rgba(0, 0, 0, 0.06)",
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4"
-                style={{ color: colorPalette.text.primary }}
-              >
-                📊 Recent Activity
-              </h2>
-              <div className="space-y-3">
-                {[
-                  {
-                    action: "Tracker #1423 updated location",
-                    time: "2 min ago",
-                  },
-                  { action: "New tracker registered", time: "15 min ago" },
-                  { action: "Alert: Battery low on #987", time: "1 hour ago" },
-                ].map((activity, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-3 rounded-xl transition-all duration-200 hover:scale-[1.02]"
-                    style={{
-                      backgroundColor: "rgba(255, 255, 255, 0.3)",
-                      border: "1px solid rgba(255, 255, 255, 0.3)",
-                    }}
-                  >
-                    <span
-                      className="text-sm"
+            <div className="space-y-2">
+              {[
+                {
+                  to: "/tracker-mode",
+                  label: "Tracker mode",
+                  desc: "Full-screen live map & tracker details",
+                },
+                {
+                  to: "/monitor",
+                  label: "Live monitor",
+                  desc: "Simulate updates & inspect runtime settings",
+                },
+                {
+                  to: "/configuration",
+                  label: "Configuration",
+                  desc: "Map, beacons, server runtime & security",
+                },
+              ].map((action) => (
+                <Link
+                  key={action.to}
+                  to={action.to}
+                  className="group flex items-center justify-between rounded-2xl px-4 py-3 transition-all duration-200 hover:scale-[1.01]"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.4)",
+                    border: `1px solid rgba(255,255,255,0.6)`,
+                  }}
+                >
+                  <div>
+                    <p
+                      className="text-sm font-semibold"
                       style={{ color: colorPalette.text.primary }}
                     >
-                      {activity.action}
-                    </span>
-                    <span
+                      {action.label}
+                    </p>
+                    <p
                       className="text-xs"
                       style={{ color: colorPalette.text.disabled }}
                     >
-                      {activity.time}
-                    </span>
+                      {action.desc}
+                    </p>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column - Quick Actions & Status */}
-          <div className="space-y-6">
-            {/* Quick Actions */}
-            <div
-              className="rounded-3xl p-6 transition-all duration-500"
-              style={{
-                background: "rgba(255, 255, 255, 0.5)",
-                backdropFilter: "blur(12px) saturate(160%)",
-                WebkitBackdropFilter: "blur(12px) saturate(160%)",
-                border: "1px solid rgba(255, 255, 255, 0.6)",
-                boxShadow: "0 8px 32px -12px rgba(0, 0, 0, 0.06)",
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4"
-                style={{ color: colorPalette.text.primary }}
-              >
-                ⚡ Quick Actions
-              </h2>
-              <div className="space-y-3">
-                {[
-                  { label: "Add New Tracker", icon: "➕" },
-                  { label: "View All Trackers", icon: "📋" },
-                  { label: "System Settings", icon: "⚙️" },
-                ].map((action, idx) => (
-                  <button
-                    key={idx}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                    style={{
-                      backgroundColor: "rgba(255, 255, 255, 0.3)",
-                      border: "1px solid rgba(255, 255, 255, 0.3)",
-                      color: colorPalette.text.primary,
-                    }}
+                  <span
+                    className="transition-transform duration-200 group-hover:translate-x-1"
+                    style={{ color: colorPalette.primary.main }}
                   >
-                    <span className="text-lg">{action.icon}</span>
-                    <span className="text-sm font-medium">{action.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* System Status */}
-            <div
-              className="rounded-3xl p-6 transition-all duration-500"
-              style={{
-                background: "rgba(255, 255, 255, 0.5)",
-                backdropFilter: "blur(12px) saturate(160%)",
-                WebkitBackdropFilter: "blur(12px) saturate(160%)",
-                border: "1px solid rgba(255, 255, 255, 0.6)",
-                boxShadow: "0 8px 32px -12px rgba(0, 0, 0, 0.06)",
-              }}
-            >
-              <h2
-                className="text-lg font-semibold mb-4"
-                style={{ color: colorPalette.text.primary }}
-              >
-                🔋 System Status
-              </h2>
-              <div className="space-y-3">
-                {[
-                  { label: "API Status", value: "Connected", status: "online" },
-                  { label: "WebSocket", value: "Active", status: "online" },
-                  { label: "Database", value: "Healthy", status: "online" },
-                ].map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-3 rounded-xl"
-                    style={{
-                      backgroundColor: "rgba(255, 255, 255, 0.2)",
-                    }}
-                  >
-                    <span
-                      className="text-sm"
-                      style={{ color: colorPalette.text.secondary }}
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     >
-                      {item.label}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-1.5 h-1.5 rounded-full animate-pulse"
-                        style={{
-                          backgroundColor:
-                            item.status === "online"
-                              ? colorPalette.success.main
-                              : colorPalette.error.main,
-                        }}
-                      />
-                      <span
-                        className="text-sm font-medium"
-                        style={{
-                          color:
-                            item.status === "online"
-                              ? colorPalette.success.dark
-                              : colorPalette.error.dark,
-                        }}
-                      >
-                        {item.value}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </span>
+                </Link>
+              ))}
             </div>
-          </div>
+          </GlassCard>
         </div>
       </div>
 
-      {/* Custom Animations */}
+      {/* Custom animations */}
       <style>{`
         @keyframes float {
           0%,
@@ -576,25 +917,11 @@ const Dashboard = () => {
             transform: translate(20px, -30px) scale(1.1);
           }
         }
-        @keyframes pulse-slow {
-          0%,
-          100% {
-            opacity: 0.05;
-            transform: scale(1);
-          }
-          50% {
-            opacity: 0.2;
-            transform: scale(1.5);
-          }
-        }
         .animate-float {
           animation: float 15s infinite ease-in-out;
         }
         .animate-float-delayed {
           animation: float-delayed 18s infinite ease-in-out;
-        }
-        .animate-pulse-slow {
-          animation: pulse-slow 6s infinite ease-in-out;
         }
       `}</style>
     </div>
