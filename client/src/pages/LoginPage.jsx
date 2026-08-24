@@ -1,10 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import LoginAnimation from "../assets/lotties/LoginAnime.json";
 import { default as LottieModule } from "lottie-react";
 const Lottie = LottieModule.default || LottieModule;
 import colorPalette from "../themes/colorPalette";
+
+function generateParticles(count = 20) {
+  const particles = [];
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      id: i,
+      size: Math.random() * 6 + 2,
+      top: Math.random() * 100,
+      left: Math.random() * 100,
+      color:
+        i % 2 === 0 ? colorPalette.primary.light : colorPalette.secondary.light,
+      opacity: Math.random() * 0.3 + 0.1,
+      animationDelay: Math.random() * 5,
+      animationDuration: Math.random() * 8 + 4,
+    });
+  }
+  return particles;
+}
 
 const LoginPage = () => {
   const [username, setUsername] = useState("");
@@ -20,6 +38,8 @@ const LoginPage = () => {
   const location = useLocation();
 
   const from = location.state?.from?.pathname || "/dashboard";
+
+  const particles = useMemo(() => generateParticles(20), []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -71,22 +91,19 @@ const LoginPage = () => {
         />
 
         {/* Floating Particles */}
-        {[...Array(20)].map((_, i) => (
+        {particles.map((particle) => (
           <div
-            key={i}
+            key={particle.id}
             className="absolute rounded-full animate-pulse-slow"
             style={{
-              width: Math.random() * 6 + 2 + "px",
-              height: Math.random() * 6 + 2 + "px",
-              top: Math.random() * 100 + "%",
-              left: Math.random() * 100 + "%",
-              background:
-                i % 2 === 0
-                  ? colorPalette.primary.light
-                  : colorPalette.secondary.light,
-              opacity: Math.random() * 0.3 + 0.1,
-              animationDelay: Math.random() * 5 + "s",
-              animationDuration: Math.random() * 8 + 4 + "s",
+              width: particle.size + "px",
+              height: particle.size + "px",
+              top: particle.top + "%",
+              left: particle.left + "%",
+              background: particle.color,
+              opacity: particle.opacity,
+              animationDelay: particle.animationDelay + "s",
+              animationDuration: particle.animationDuration + "s",
             }}
           />
         ))}

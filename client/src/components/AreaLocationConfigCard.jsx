@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   loadServerRuntimeConfiguration,
   saveServerRuntimeConfiguration,
@@ -35,7 +35,7 @@ export default function AreaLocationConfigCard() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -76,11 +76,12 @@ export default function AreaLocationConfigCard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   const handleSave = async () => {
     try {

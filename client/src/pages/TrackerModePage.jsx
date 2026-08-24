@@ -61,7 +61,9 @@ export default function TrackerModePage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRuntimeConfig();
   }, [loadConfig, loadRuntimeConfig]);
 
@@ -98,6 +100,7 @@ export default function TrackerModePage() {
     const mqttEnabled = runtimeConfig?.mqtt?.enabled;
     websocketService.setMQTTEnabled(mqttEnabled !== false);
     if (mqttEnabled === false) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTrackers([]);
     }
   }, [runtimeConfig, loadingRuntimeConfig]);

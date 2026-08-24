@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   loadServerRuntimeConfiguration,
   restartServerRuntimeService,
@@ -35,7 +35,7 @@ export default function ServerRuntimeCard() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -73,11 +73,12 @@ export default function ServerRuntimeCard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   const mqttEnabled = useMemo(
     () => Boolean(config.mqtt.enabled),

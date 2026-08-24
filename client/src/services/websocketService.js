@@ -53,17 +53,14 @@ class WebSocketService {
         const parsedUrl = new URL(WS_URL, window.location.origin);
         parsedUrl.searchParams.set("token", authToken);
         wsUrl = parsedUrl.toString();
-      } catch (err) {
-        console.warn(
-          "Invalid WS URL, using default URL without auth token",
-          err,
-        );
+      } catch {
+        console.warn("Invalid WS URL, using default URL without auth token");
       }
     }
 
     try {
       this.ws = new WebSocket(wsUrl);
-    } catch (err) {
+    } catch {
       this.setWSStatus("error");
       this.scheduleReconnect();
       return;

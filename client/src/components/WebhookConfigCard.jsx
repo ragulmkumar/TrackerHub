@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   loadServerRuntimeConfiguration,
   saveServerRuntimeConfiguration,
@@ -58,7 +58,7 @@ export default function WebhookConfigCard() {
     return Object.entries(config.webhook.headers || {});
   }, [config.webhook.headers]);
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -104,11 +104,12 @@ export default function WebhookConfigCard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   const updateWebhookField = (field, value) => {
     setConfig((current) => ({

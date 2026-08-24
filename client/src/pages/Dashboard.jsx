@@ -375,7 +375,10 @@ const Dashboard = () => {
       return;
     }
     websocketService.setMQTTEnabled(mqttEnabled !== false);
-    if (mqttEnabled === false) setTrackers([]);
+    if (mqttEnabled === false) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTrackers([]);
+    }
   }, [runtimeConfig, mqttEnabled]);
 
   /* Derived metrics — all from live/config data, nothing hardcoded */

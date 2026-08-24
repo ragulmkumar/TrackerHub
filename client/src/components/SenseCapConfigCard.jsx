@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   loadServerRuntimeConfiguration,
   saveServerRuntimeConfiguration,
@@ -49,7 +49,7 @@ export default function SenseCapConfigCard() {
     );
   }, [config.mqtt.applicationID, config.mqtt.serverRegion]);
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -78,11 +78,12 @@ export default function SenseCapConfigCard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   const updateField = (field, value) => {
     setConfig((current) => ({

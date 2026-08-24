@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   loadServerRuntimeConfiguration,
   saveServerRuntimeConfiguration,
@@ -55,7 +55,7 @@ export default function TrackerAccessControlCard() {
     [config.trackerAccessControl.allowedTrackers],
   );
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -110,11 +110,12 @@ export default function TrackerAccessControlCard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   const addTracker = () => {
     const tracker = newTrackerID.trim();

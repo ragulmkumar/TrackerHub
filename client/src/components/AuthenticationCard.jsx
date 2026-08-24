@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   loadAuthenticationConfiguration,
   saveAuthenticationConfiguration,
@@ -45,7 +45,7 @@ export default function AuthenticationCard() {
     return config.password || PASSWORD_MASK;
   }, [config.password]);
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -59,11 +59,12 @@ export default function AuthenticationCard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   const handleSave = async () => {
     try {

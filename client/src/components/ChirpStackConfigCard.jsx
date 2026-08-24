@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   loadServerRuntimeConfiguration,
   saveServerRuntimeConfiguration,
@@ -55,7 +55,7 @@ export default function ChirpStackConfigCard() {
     return buildDerivedValues(config.mqtt.applicationID);
   }, [config.mqtt.applicationID]);
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -95,11 +95,12 @@ export default function ChirpStackConfigCard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConfig();
-  }, []);
+  }, [loadConfig]);
 
   const updateField = (field, value) => {
     setConfig((current) => ({
