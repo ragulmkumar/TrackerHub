@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AreaLocationConfigCard from "../components/AreaLocationConfigCard";
 import AuthenticationCard from "../components/AuthenticationCard";
@@ -45,6 +45,7 @@ export default function ConfigurationPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [placementBeacon, setPlacementBeacon] = useState(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -134,6 +135,85 @@ export default function ConfigurationPage() {
 
   function handlePlacementCancel() {
     setPlacementBeacon(null);
+  }
+
+  function validateLayoutStructure(jsonData) {
+    if (!jsonData || typeof jsonData !== "object") return false;
+    if (!jsonData.map || typeof jsonData.map !== "object") return false;
+    if (
+      typeof jsonData.map.width !== "number" ||
+      typeof jsonData.map.height !== "number"
+    )
+      return false;
+    if (!Array.isArray(jsonData.beacons)) return false;
+    if (!jsonData.settings || typeof jsonData.settings !== "object")
+      return false;
+    if (typeof jsonData.settings.signalPropagationFactor !== "number")
+      return false;
+    if (jsonData.map.entities && !Array.isArray(jsonData.map.entities))
+      return false;
+    if (jsonData.map.entities) {
+      for (const entity of jsonData.map.entities) {
+        if (entity.type !== "polyline") return false;
+        if (!Array.isArray(entity.points) || entity.points.length < 2)
+          return false;
+        for (const point of entity.points) {
+          if (
+            !Array.isArray(point) ||
+            point.length !== 2 ||
+            typeof point[0] !== "number" ||
+            typeof point[1] !== "number"
+          ) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  function handleImportLayout(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const jsonData = JSON.parse(e.target.result);
+        if (!validateLayoutStructure(jsonData)) {
+          setError(
+            "Invalid layout format. Expected: { map: { width, height, entities[] }, beacons[], settings: { signalPropagationFactor } }",
+          );
+          return;
+        }
+        setConfig((current) => ({
+          map: {
+            ...current.map,
+            name: jsonData.map.name || current.map.name,
+            width: jsonData.map.width,
+            height: jsonData.map.height,
+            entities: jsonData.map.entities || [],
+          },
+          beacons: jsonData.beacons,
+          settings: {
+            ...current.settings,
+            signalPropagationFactor: jsonData.settings.signalPropagationFactor,
+          },
+        }));
+        setMessage(
+          "Layout imported successfully. Review and save configuration.",
+        );
+        setError("");
+      } catch (err) {
+        setError("Failed to parse JSON file: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
+  }
+
+  function triggerFileImport() {
+    fileInputRef.current?.click();
   }
 
   return (
@@ -243,14 +323,33 @@ export default function ConfigurationPage() {
                       positioning engine.
                     </p>
                   </div>
-                  <div
-                    className="rounded-full px-3 py-1 text-sm"
-                    style={{
-                      backgroundColor: `${colorPalette.info.main}15`,
-                      color: colorPalette.info.dark,
-                    }}
-                  >
-                    {beaconCount} beacon{beaconCount === 1 ? "" : "s"}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="rounded-full px-3 py-1 text-sm"
+                      style={{
+                        backgroundColor: `${colorPalette.info.main}15`,
+                        color: colorPalette.info.dark,
+                      }}
+                    >
+                      {beaconCount} beacon{beaconCount === 1 ? "" : "s"}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={triggerFileImport}
+                      className="rounded-lg px-3 py-1.5 text-sm font-medium text-white"
+                      style={{
+                        backgroundColor: colorPalette.primary.main,
+                      }}
+                    >
+                      Import Layout
+                    </button>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept=".json"
+                      style={{ display: "none" }}
+                      onChange={handleImportLayout}
+                    />
                   </div>
                 </div>
 

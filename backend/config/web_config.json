@@ -1,17 +1,17 @@
 {
   "map": {
     "name": "Test Office",
-    "width": 9.0,
-    "height": 5.0,
+    "width": 9,
+    "height": 5,
     "entities": [
       {
         "type": "polyline",
         "points": [
-          [0.0, 0.0],
-          [9.0, 0.0],
-          [9.0, 5.0],
-          [0.0, 5.0],
-          [0.0, 0.0]
+          [0, 0],
+          [9, 0],
+          [9, 5],
+          [0, 5],
+          [0, 0]
         ],
         "closed": true,
         "strokeColor": "#333333",
@@ -24,9 +24,9 @@
       "uuid": "74278BDA-B644-4520-8F0C-720EAF059939",
       "major": 10001,
       "minor": 19641,
-      "x": 6.89,
-      "y": 3.06,
-      "txPower": -59,
+      "x": 8.092391304347826,
+      "y": 2.9347826086956523,
+      "txPower": -30,
       "displayName": "MBeaco5",
       "macAddress": "C300003E7DEF"
     },
@@ -34,8 +34,8 @@
       "uuid": "74278BDA-B644-4520-8F0C-720EAF059938",
       "major": 10001,
       "minor": 19641,
-      "x": 6.96,
-      "y": 1.19,
+      "x": 7.961956521739131,
+      "y": 0.2391304347826087,
       "txPower": -59,
       "displayName": "MBeaco4",
       "macAddress": "C300003E7DDA"
@@ -44,8 +44,8 @@
       "uuid": "74278BDA-B644-4520-8F0C-720EAF059937",
       "major": 10001,
       "minor": 19641,
-      "x": 0.83,
-      "y": 2.04,
+      "x": 4.288043478260869,
+      "y": 2.4565217391304346,
       "txPower": -59,
       "displayName": "MBeaco3",
       "macAddress": "C300003E7DE0"
@@ -54,8 +54,8 @@
       "uuid": "74278BDA-B644-4520-8F0C-720EAF059935",
       "major": 10001,
       "minor": 19641,
-      "x": 1.56,
-      "y": 4.24,
+      "x": 1.3858695652173914,
+      "y": 3.858695652173913,
       "txPower": -59,
       "displayName": "MBeaco1",
       "macAddress": "C300003E7DFB"
