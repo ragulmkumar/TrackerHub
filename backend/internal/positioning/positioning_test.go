@@ -82,6 +82,108 @@ func TestCalculateDistanceEdgeCases(t *testing.T) {
 	}
 }
 
+func TestWeightedCentroid(t *testing.T) {
+	// Two beacons at (0,0) and (10,0) with distances 5 and 5
+	// Weighted centroid should be near (5, 0)
+	beacons := [][3]float64{
+		{0, 0, 5},
+		{10, 0, 5},
+	}
+
+	pos, accuracy := WeightedCentroid(beacons)
+	if pos == nil {
+		t.Fatal("WeightedCentroid returned nil")
+	}
+	if math.Abs(pos[0]-5.0) > 0.5 {
+		t.Errorf("Expected x ≈ 5.0, got %v", pos[0])
+	}
+	if math.Abs(pos[1]-0.0) > 0.5 {
+		t.Errorf("Expected y ≈ 0.0, got %v", pos[1])
+	}
+	if accuracy <= 0 {
+		t.Errorf("Expected positive accuracy, got %v", accuracy)
+	}
+}
+
+func TestWeightedCentroidSingleBeacon(t *testing.T) {
+	// Single beacon at (5, 5) with distance 3
+	// Weighted centroid should be at the beacon position
+	beacons := [][3]float64{
+		{5, 5, 3},
+	}
+
+	pos, accuracy := WeightedCentroid(beacons)
+	if pos == nil {
+		t.Fatal("WeightedCentroid returned nil")
+	}
+	if math.Abs(pos[0]-5.0) > 0.5 {
+		t.Errorf("Expected x ≈ 5.0, got %v", pos[0])
+	}
+	if math.Abs(pos[1]-5.0) > 0.5 {
+		t.Errorf("Expected y ≈ 5.0, got %v", pos[1])
+	}
+	if accuracy <= 0 {
+		t.Errorf("Expected positive accuracy, got %v", accuracy)
+	}
+}
+
+func TestWeightedCentroidEmpty(t *testing.T) {
+	pos, accuracy := WeightedCentroid([][3]float64{})
+	if pos != nil {
+		t.Errorf("Expected nil position for empty beacons, got %v", pos)
+	}
+	if accuracy != 0.0 {
+		t.Errorf("Expected 0 accuracy for empty beacons, got %v", accuracy)
+	}
+}
+
+func TestRejectOutliers(t *testing.T) {
+	lastPos := &[2]float64{5, 5}
+	beacons := [][3]float64{
+		{5, 5, 3},      // Close - keep
+		{100, 100, 50}, // Far outlier - reject
+		{6, 6, 2},      // Close - keep
+	}
+
+	filtered := RejectOutliers(beacons, lastPos, 10.0) // 10m max jump
+	if len(filtered) != 2 {
+		t.Errorf("Expected 2 beacons after outlier rejection, got %d", len(filtered))
+	}
+	if filtered[0][0] != 5 || filtered[0][1] != 5 {
+		t.Errorf("First beacon should be (5,5), got (%v,%v)", filtered[0][0], filtered[0][1])
+	}
+	if filtered[1][0] != 6 || filtered[1][1] != 6 {
+		t.Errorf("Second beacon should be (6,6), got (%v,%v)", filtered[1][0], filtered[1][1])
+	}
+}
+
+func TestRejectOutliersAllFiltered(t *testing.T) {
+	lastPos := &[2]float64{5, 5}
+	beacons := [][3]float64{
+		{100, 100, 50}, // Far outlier
+		{200, 200, 60}, // Another outlier
+	}
+
+	filtered := RejectOutliers(beacons, lastPos, 10.0)
+	// Should return original when all filtered out
+	if len(filtered) != 2 {
+		t.Errorf("Expected 2 beacons (all filtered -> return original), got %d", len(filtered))
+	}
+}
+
+func TestRejectOutliersNoLastPosition(t *testing.T) {
+	beacons := [][3]float64{
+		{100, 100, 50},
+		{200, 200, 60},
+	}
+
+	filtered := RejectOutliers(beacons, nil, 10.0)
+	// Should return all when no last position
+	if len(filtered) != 2 {
+		t.Errorf("Expected 2 beacons (no last pos), got %d", len(filtered))
+	}
+}
+
 func TestMultilaterationLeastSquares(t *testing.T) {
 	// Three beacons forming a triangle
 	// Beacon 1 at (0, 0), distance 5
@@ -156,8 +258,14 @@ func TestMultilaterationLeastSquaresCollinear(t *testing.T) {
 func TestCalculatePosition(t *testing.T) {
 	// Test with nil config
 	result := CalculatePosition(nil, nil, nil)
-	if result != nil {
-		t.Errorf("CalculatePosition with nil config should return nil")
+	if result == nil {
+		t.Fatal("CalculatePosition should return PositionResult")
+	}
+	if result.Position != nil {
+		t.Errorf("CalculatePosition with nil config should return nil position")
+	}
+	if result.Method != "none" {
+		t.Errorf("Expected method 'none', got %s", result.Method)
 	}
 
 	// Test with empty beacon config
@@ -168,8 +276,14 @@ func TestCalculatePosition(t *testing.T) {
 		},
 	}
 	result = CalculatePosition(nil, config, nil)
-	if result != nil {
-		t.Errorf("CalculatePosition with empty beacon config should return nil")
+	if result == nil {
+		t.Fatal("CalculatePosition should return PositionResult")
+	}
+	if result.Position != nil {
+		t.Errorf("CalculatePosition with empty beacon config should return nil position")
+	}
+	if result.Method != "none" {
+		t.Errorf("Expected method 'none', got %s", result.Method)
 	}
 }
 
@@ -177,6 +291,7 @@ func TestCalculatePositionInsufficientBeacons(t *testing.T) {
 	config := &models.WebUIConfig{
 		Beacons: []models.WebUIBeaconConfig{
 			{MACAddress: "AA:BB:CC:DD:EE:01", X: 0, Y: 0, TXPower: -59},
+			{MACAddress: "AA:BB:CC:DD:EE:02", X: 10, Y: 0, TXPower: -59},
 		},
 		Settings: models.WebUISettings{
 			SignalPropagationFactor: 2.0,
@@ -185,11 +300,28 @@ func TestCalculatePositionInsufficientBeacons(t *testing.T) {
 
 	detected := []models.DetectedBeacon{
 		{MACAddress: "AA:BB:CC:DD:EE:01", RSSI: -65},
+		{MACAddress: "AA:BB:CC:DD:EE:02", RSSI: -70},
 	}
 
 	result := CalculatePosition(detected, config, nil)
-	if result != nil {
-		t.Errorf("CalculatePosition with 1 beacon should return nil")
+	if result == nil {
+		t.Fatal("CalculatePosition should return PositionResult")
+	}
+	// With 2 beacons, should use weighted centroid fallback
+	if result.Position == nil {
+		t.Errorf("CalculatePosition with 2 beacons should return position via weighted centroid")
+	}
+	if result.Method != "weighted-centroid" {
+		t.Errorf("Expected method 'weighted-centroid' for 2 beacons, got %s", result.Method)
+	}
+	if result.BeaconCount != 2 {
+		t.Errorf("Expected beacon count 2, got %d", result.BeaconCount)
+	}
+	if result.Accuracy <= 0 {
+		t.Errorf("Expected positive accuracy, got %v", result.Accuracy)
+	}
+	if result.Confidence <= 0 || result.Confidence > 1.0 {
+		t.Errorf("Expected confidence in (0, 1], got %v", result.Confidence)
 	}
 }
 
@@ -211,12 +343,21 @@ func TestCalculatePositionNoMatchingBeacons(t *testing.T) {
 	}
 
 	result := CalculatePosition(detected, config, nil)
-	if result != nil {
-		t.Errorf("CalculatePosition with no matching beacons should return nil")
+	if result == nil {
+		t.Fatal("CalculatePosition should return PositionResult")
+	}
+	if result.Position != nil {
+		t.Errorf("CalculatePosition with no matching beacons should return nil position")
+	}
+	if result.Method != "none" {
+		t.Errorf("Expected method 'none', got %s", result.Method)
+	}
+	if result.BeaconCount != 0 {
+		t.Errorf("Expected beacon count 0, got %d", result.BeaconCount)
 	}
 }
 
-func TestCalculatePositionValidCase(t *testing.T) {
+func TestCalculatePositionValidMultilateration(t *testing.T) {
 	config := &models.WebUIConfig{
 		Beacons: []models.WebUIBeaconConfig{
 			{MACAddress: "AA:BB:CC:DD:EE:01", X: 0, Y: 0, TXPower: -59},
@@ -242,13 +383,67 @@ func TestCalculatePositionValidCase(t *testing.T) {
 	if result == nil {
 		t.Fatal("CalculatePosition returned nil for valid case")
 	}
+	if result.Position == nil {
+		t.Fatal("Expected non-nil position")
+	}
+	if result.Method != "multilateration" {
+		t.Errorf("Expected method 'multilateration' for 3+ beacons, got %s", result.Method)
+	}
+	if result.BeaconCount != 3 {
+		t.Errorf("Expected beacon count 3, got %d", result.BeaconCount)
+	}
+	if result.Accuracy <= 0 {
+		t.Errorf("Expected positive accuracy, got %v", result.Accuracy)
+	}
+	if result.Confidence <= 0 || result.Confidence > 1.0 {
+		t.Errorf("Expected confidence in (0, 1], got %v", result.Confidence)
+	}
 
 	// Should be close to (5, 5) - relaxed tolerance due to gradient descent limitations
-	if math.Abs(result[0]-5.0) > 1.0 {
-		t.Errorf("Expected x ≈ 5.0, got %v", result[0])
+	if math.Abs(result.Position[0]-5.0) > 1.0 {
+		t.Errorf("Expected x ≈ 5.0, got %v", result.Position[0])
 	}
-	if math.Abs(result[1]-5.0) > 3.0 {
-		t.Errorf("Expected y ≈ 5.0 (within tolerance), got %v", result[1])
+	if math.Abs(result.Position[1]-5.0) > 3.0 {
+		t.Errorf("Expected y ≈ 5.0 (within tolerance), got %v", result.Position[1])
+	}
+}
+
+func TestCalculatePositionWithOutlierRejection(t *testing.T) {
+	config := &models.WebUIConfig{
+		Beacons: []models.WebUIBeaconConfig{
+			{MACAddress: "AA:BB:CC:DD:EE:01", X: 0, Y: 0, TXPower: -59},
+			{MACAddress: "AA:BB:CC:DD:EE:02", X: 10, Y: 0, TXPower: -59},
+			{MACAddress: "AA:BB:CC:DD:EE:03", X: 5, Y: 10, TXPower: -59},
+			{MACAddress: "AA:BB:CC:DD:EE:04", X: 100, Y: 100, TXPower: -59}, // Far away outlier
+		},
+		Settings: models.WebUISettings{
+			SignalPropagationFactor: 2.0,
+		},
+	}
+
+	lastPos := &[2]float64{5, 5}
+
+	// 3 good beacons near (5,5), 1 outlier at (100,100)
+	detected := []models.DetectedBeacon{
+		{MACAddress: "AA:BB:CC:DD:EE:01", RSSI: -73},
+		{MACAddress: "AA:BB:CC:DD:EE:02", RSSI: -73},
+		{MACAddress: "AA:BB:CC:DD:EE:03", RSSI: -76},
+		{MACAddress: "AA:BB:CC:DD:EE:04", RSSI: -60}, // Strong signal but far away - outlier
+	}
+
+	result := CalculatePosition(detected, config, lastPos)
+	if result == nil {
+		t.Fatal("CalculatePosition returned nil")
+	}
+	if result.Position == nil {
+		t.Fatal("Expected non-nil position")
+	}
+	// Should reject the outlier and use 3 good beacons for multilateration
+	if result.BeaconCount != 3 {
+		t.Errorf("Expected 3 beacons after outlier rejection, got %d", result.BeaconCount)
+	}
+	if result.Method != "multilateration" {
+		t.Errorf("Expected method 'multilateration', got %s", result.Method)
 	}
 }
 

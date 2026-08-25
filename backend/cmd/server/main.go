@@ -118,24 +118,24 @@ func main() {
 			return
 		}
 
-		position := positioningService.CalculatePosition(report.DetectedBeacons, webUIConfig, nil)
-		if position == nil {
+		posResult := positioningService.CalculatePosition(report.DetectedBeacons, webUIConfig, nil)
+		if posResult == nil || posResult.Position == nil {
 			return
 		}
 
 		timestamp := time.Now().UnixMilli()
-		trackerCoords := []float64{position[0], position[1]}
-		accuracy := 0.0
+		trackerCoords := []float64{posResult.Position[0], posResult.Position[1]}
+		accuracy := posResult.Accuracy
 		apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, &accuracy)
 
 		trackerData := map[string]interface{}{
-			"trackerId": report.TrackerID,
-			"timestamp": timestamp,
-			"position": map[string]float64{
-				"x": position[0],
-				"y": position[1],
-			},
-			"accuracy":              accuracy,
+			"trackerId":             report.TrackerID,
+			"timestamp":             timestamp,
+			"position":              map[string]float64{"x": posResult.Position[0], "y": posResult.Position[1]},
+			"accuracy":              posResult.Accuracy,
+			"confidence":            posResult.Confidence,
+			"method":                posResult.Method,
+			"beaconCount":           posResult.BeaconCount,
 			"last_detected_beacons": report.DetectedBeacons,
 			"position_history":      apiHandler.GetTrackerSnapshot()[report.TrackerID].PositionHistory,
 		}

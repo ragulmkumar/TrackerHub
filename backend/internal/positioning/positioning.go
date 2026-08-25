@@ -6,6 +6,15 @@ import (
 	"trackerHub/backend/internal/models"
 )
 
+// PositionResult contains the calculated position along with accuracy/confidence metrics
+type PositionResult struct {
+	Position    *[2]float64
+	Accuracy    float64 // Estimated accuracy in meters (lower is better)
+	Confidence  float64 // Confidence level 0.0-1.0 (higher is better)
+	Method      string  // "multilateration" or "weighted-centroid"
+	BeaconCount int     // Number of beacons used in calculation
+}
+
 // CalculateDistance estimates distance based on RSSI using the Log-distance path loss model
 func CalculateDistance(RSSI int, txPower int, n float64) float64 {
 	if RSSI == 0 {
@@ -17,6 +26,79 @@ func CalculateDistance(RSSI int, txPower int, n float64) float64 {
 		return 10000.0 // Return a large distance
 	}
 	return math.Pow(10, exponent)
+}
+
+// WeightedCentroid calculates position using weighted centroid based on signal strength
+// Used as fallback when <3 beacons are available
+func WeightedCentroid(beaconsWithDist [][3]float64) (*[2]float64, float64) {
+	if len(beaconsWithDist) == 0 {
+		return nil, 0.0
+	}
+
+	var weightedX, weightedY, totalWeight float64
+
+	for _, b := range beaconsWithDist {
+		// Weight by inverse of distance (closer beacons have more influence)
+		// Add small epsilon to avoid division by zero
+		weight := 1.0 / (b[2] + 0.1)
+		weightedX += b[0] * weight
+		weightedY += b[1] * weight
+		totalWeight += weight
+	}
+
+	if totalWeight == 0 {
+		return nil, 0.0
+	}
+
+	pos := &[2]float64{
+		weightedX / totalWeight,
+		weightedY / totalWeight,
+	}
+
+	// Accuracy estimate: weighted average distance to beacons
+	var weightedDistSum float64
+	for _, b := range beaconsWithDist {
+		dx := pos[0] - b[0]
+		dy := pos[1] - b[1]
+		dist := math.Sqrt(dx*dx + dy*dy)
+		weightedDistSum += dist * (1.0 / (b[2] + 0.1))
+	}
+	accuracy := weightedDistSum / totalWeight
+
+	// For single beacon, accuracy should be the estimated distance to that beacon
+	// (since the position equals the beacon position, distance is 0, which is wrong)
+	if len(beaconsWithDist) == 1 {
+		accuracy = beaconsWithDist[0][2]
+	}
+
+	return pos, accuracy
+}
+
+// RejectOutliers removes beacons with implausible RSSI values that would cause position jumps
+func RejectOutliers(beaconsWithDist [][3]float64, lastKnownPosition *[2]float64, maxJumpDistance float64) [][3]float64 {
+	if lastKnownPosition == nil || len(beaconsWithDist) == 0 {
+		return beaconsWithDist
+	}
+
+	var filtered [][3]float64
+	for _, b := range beaconsWithDist {
+		dx := b[0] - lastKnownPosition[0]
+		dy := b[1] - lastKnownPosition[1]
+		dist := math.Sqrt(dx*dx + dy*dy)
+
+		// Keep beacon if it's within reasonable distance of last known position
+		// or if we don't have a last known position to compare against
+		if dist <= maxJumpDistance {
+			filtered = append(filtered, b)
+		}
+	}
+
+	// If we filtered out everything, return original (better than nothing)
+	if len(filtered) == 0 {
+		return beaconsWithDist
+	}
+
+	return filtered
 }
 
 // MultilaterationLeastSquares calculates position using least squares optimization based on distances to known beacon coordinates
@@ -104,10 +186,17 @@ func MultilaterationLeastSquares(beaconsWithDist [][3]float64, initialGuess *[2]
 	return &pos
 }
 
-// CalculatePosition calculates position from detected beacons and web UI config using least squares multilateration
-func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *models.WebUIConfig, lastKnownPosition *[2]float64) *[2]float64 {
+// CalculatePosition calculates position from detected beacons and web UI config
+// Returns PositionResult with position, accuracy, confidence, method, and beacon count
+func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *models.WebUIConfig, lastKnownPosition *[2]float64) *PositionResult {
 	if webUIConfig == nil || len(webUIConfig.Beacons) == 0 {
-		return nil
+		return &PositionResult{
+			Position:    nil,
+			Accuracy:    0.0,
+			Confidence:  0.0,
+			Method:      "none",
+			BeaconCount: 0,
+		}
 	}
 
 	var beaconsWithCoordsDist [][3]float64
@@ -156,11 +245,70 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 		// else: beacon not found in configuration, ignore
 	}
 
-	// Need at least 3 beacons for multilateration
-	if len(beaconsWithCoordsDist) < 3 {
-		return nil
+	// No valid beacons at all
+	if len(beaconsWithCoordsDist) == 0 {
+		return &PositionResult{
+			Position:    nil,
+			Accuracy:    0.0,
+			Confidence:  0.0,
+			Method:      "none",
+			BeaconCount: 0,
+		}
 	}
 
-	// Perform multilateration using least squares
-	return MultilaterationLeastSquares(beaconsWithCoordsDist, lastKnownPosition)
+	// Outlier rejection based on last known position
+	beaconsWithCoordsDist = RejectOutliers(beaconsWithCoordsDist, lastKnownPosition, 50.0) // 50m max jump
+
+	// If we still have >=3 beacons after outlier rejection, use multilateration
+	if len(beaconsWithCoordsDist) >= 3 {
+		pos := MultilaterationLeastSquares(beaconsWithCoordsDist, lastKnownPosition)
+		if pos != nil {
+			// Calculate accuracy as RMS error of distances
+			var sumSqError float64
+			for _, b := range beaconsWithCoordsDist {
+				dx := pos[0] - b[0]
+				dy := pos[1] - b[1]
+				estimatedDist := math.Sqrt(dx*dx + dy*dy)
+				error := b[2] - estimatedDist
+				sumSqError += error * error
+			}
+			accuracy := math.Sqrt(sumSqError / float64(len(beaconsWithCoordsDist)))
+			confidence := math.Max(0.0, math.Min(1.0, 1.0-accuracy/20.0)) // Confidence based on accuracy
+
+			return &PositionResult{
+				Position:    pos,
+				Accuracy:    accuracy,
+				Confidence:  confidence,
+				Method:      "multilateration",
+				BeaconCount: len(beaconsWithCoordsDist),
+			}
+		}
+	}
+
+	// Fallback to weighted centroid for 1-2 beacons (or if multilateration failed)
+	pos, accuracy := WeightedCentroid(beaconsWithCoordsDist)
+	if pos != nil {
+		// Lower confidence for weighted centroid: penalize based on beacon count and accuracy
+		// With 1 beacon, max confidence ~0.6; with 2 beacons, max ~0.75
+		beaconFactor := 0.5 + 0.25*float64(len(beaconsWithCoordsDist)) // 0.5 for 1, 0.75 for 2
+		accuracyFactor := math.Max(0.0, math.Min(1.0, 1.0-accuracy/20.0))
+		confidence := math.Max(0.0, math.Min(1.0, beaconFactor*accuracyFactor))
+
+		return &PositionResult{
+			Position:    pos,
+			Accuracy:    accuracy,
+			Confidence:  confidence,
+			Method:      "weighted-centroid",
+			BeaconCount: len(beaconsWithCoordsDist),
+		}
+	}
+
+	// Should not reach here, but just in case
+	return &PositionResult{
+		Position:    nil,
+		Accuracy:    0.0,
+		Confidence:  0.0,
+		Method:      "none",
+		BeaconCount: len(beaconsWithCoordsDist),
+	}
 }

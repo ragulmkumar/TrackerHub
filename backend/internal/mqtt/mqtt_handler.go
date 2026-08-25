@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -178,31 +179,88 @@ func (h *MQTTHandler) handleMQTTMessage(msg MQTT.Message) {
 }
 
 // parseTrackerReport parses the MQTT payload into a TrackerReport
+// Supports SenseCAP format: {"value":[{"mac":"AA:BB:CC:DD:EE:FF","rssi":"-65"},...],"timestamp":1234567890000}
+// Also supports legacy format: {"beacons":[{"macAddress":"AA:BB:CC:DD:EE:FF","rssi":-65},...]}
 func (h *MQTTHandler) parseTrackerReport(deviceEUI string, payload []byte) *models.TrackerReport {
-	// This is a placeholder implementation - you'll need to adapt this
-	// based on your actual payload format
 	var data map[string]interface{}
 	if err := json.Unmarshal(payload, &data); err != nil {
 		return nil
 	}
 
-	report := &models.TrackerReport{
-		TrackerID: deviceEUI,
-		Timestamp: time.Now().UnixMilli(),
+	// Extract timestamp from payload (milliseconds since epoch)
+	var timestamp int64
+	if ts, ok := data["timestamp"]; ok {
+		switch v := ts.(type) {
+		case float64:
+			timestamp = int64(v)
+		case string:
+			if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+				timestamp = parsed
+			} else {
+				timestamp = time.Now().UnixMilli()
+			}
+		default:
+			timestamp = time.Now().UnixMilli()
+		}
+	} else {
+		timestamp = time.Now().UnixMilli()
 	}
 
-	// Parse detected beacons - this depends on your payload format
-	// This is just an example structure
-	if beacons, ok := data["beacons"].([]interface{}); ok {
-		for _, b := range beacons {
+	report := &models.TrackerReport{
+		TrackerID: deviceEUI,
+		Timestamp: timestamp,
+	}
+
+	// Parse SenseCAP format: "value" array with beacon objects containing "mac" and "rssi"
+	if beaconValues, ok := data["value"].([]interface{}); ok {
+		for _, b := range beaconValues {
 			if beaconMap, ok := b.(map[string]interface{}); ok {
 				detected := models.DetectedBeacon{}
-				if mac, ok := beaconMap["macAddress"].(string); ok {
-					detected.MACAddress = mac
+
+				// MAC address (key is "mac" in SenseCAP format)
+				if mac, ok := beaconMap["mac"].(string); ok {
+					detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
+				} else if mac, ok := beaconMap["macAddress"].(string); ok {
+					// Also support alternative key "macAddress"
+					detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
 				}
-				if rssi, ok := beaconMap["rssi"].(float64); ok {
+
+				// RSSI (key is "rssi" - can be string or number in SenseCAP format)
+				if rssi, ok := beaconMap["rssi"].(string); ok {
+					if parsed, err := strconv.Atoi(rssi); err == nil {
+						detected.RSSI = parsed
+					}
+				} else if rssi, ok := beaconMap["rssi"].(float64); ok {
 					detected.RSSI = int(rssi)
 				}
+
+				// Only add if we have valid MAC and RSSI
+				if detected.MACAddress != "" && detected.RSSI != 0 {
+					report.DetectedBeacons = append(report.DetectedBeacons, detected)
+				}
+			}
+		}
+	} else if beaconValues, ok := data["beacons"].([]interface{}); ok {
+		// Legacy format support
+		for _, b := range beaconValues {
+			if beaconMap, ok := b.(map[string]interface{}); ok {
+				detected := models.DetectedBeacon{}
+
+				// MAC address (key is "macAddress" in legacy format)
+				if mac, ok := beaconMap["macAddress"].(string); ok {
+					detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
+				}
+
+				// RSSI (can be string or number)
+				if rssi, ok := beaconMap["rssi"].(string); ok {
+					if parsed, err := strconv.Atoi(rssi); err == nil {
+						detected.RSSI = parsed
+					}
+				} else if rssi, ok := beaconMap["rssi"].(float64); ok {
+					detected.RSSI = int(rssi)
+				}
+
+				// Optional: Major/Minor for iBeacon
 				if major, ok := beaconMap["major"].(float64); ok {
 					majorInt := int(major)
 					detected.Major = &majorInt
@@ -211,7 +269,11 @@ func (h *MQTTHandler) parseTrackerReport(deviceEUI string, payload []byte) *mode
 					minorInt := int(minor)
 					detected.Minor = &minorInt
 				}
-				report.DetectedBeacons = append(report.DetectedBeacons, detected)
+
+				// Only add if we have valid MAC and RSSI
+				if detected.MACAddress != "" && detected.RSSI != 0 {
+					report.DetectedBeacons = append(report.DetectedBeacons, detected)
+				}
 			}
 		}
 	}

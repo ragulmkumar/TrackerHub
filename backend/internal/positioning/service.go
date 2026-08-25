@@ -13,6 +13,7 @@ func NewPositioningService() *PositioningService {
 }
 
 // CalculatePosition calculates position from detected beacons and web UI config
-func (s *PositioningService) CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *models.WebUIConfig, lastKnownPosition *[2]float64) *[2]float64 {
+// Returns PositionResult with position, accuracy, confidence, method, and beacon count
+func (s *PositioningService) CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *models.WebUIConfig, lastKnownPosition *[2]float64) *PositionResult {
 	return CalculatePosition(detectedBeacons, webUIConfig, lastKnownPosition)
 }
