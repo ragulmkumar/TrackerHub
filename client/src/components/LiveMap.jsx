@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import colorPalette from "../themes/colorPalette";
+import {
+  useMapCanvas,
+  drawMapBase,
+  drawBeacons,
+  drawMapFooter,
+} from "../hooks/useMapCanvas";
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -36,6 +42,16 @@ export default function LiveMap({
     observer.observe(wrapper);
     return () => observer.disconnect();
   }, []);
+
+  // Use shared coordinate conversion hook
+  const coords = useMapCanvas({
+    canvasWidth: canvasSize.width,
+    canvasHeight: canvasSize.height,
+    mapConfig,
+    padding: 30,
+  });
+
+  const { toCanvas, scale } = coords;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -87,130 +103,20 @@ export default function LiveMap({
       return;
     }
 
-    const mapWidth = mapConfig.map.width;
-    const mapHeight = mapConfig.map.height;
-    const padding = 30;
-    const availableWidth = width - padding * 2;
-    const availableHeight = height - padding * 2;
-    const scale = Math.max(
-      0.1,
-      Math.min(
-        availableWidth / Math.max(mapWidth, 1),
-        availableHeight / Math.max(mapHeight, 1),
-      ),
-    );
-    const renderWidth = mapWidth * scale;
-    const renderHeight = mapHeight * scale;
-    const offsetX = (width - renderWidth) / 2;
-    const offsetY = (height - renderHeight) / 2;
+    // Draw map base (background, grid, entities) using shared function
+    drawMapBase(ctx, {
+      mapConfig,
+      canvasWidth: width,
+      canvasHeight: height,
+      coords,
+      backgroundColor: colorPalette.background.default,
+    });
 
-    const toCanvas = (x, y) => {
-      const drawX = offsetX + x * scale;
-      const drawY = height - offsetY - y * scale;
-      return [drawX, drawY];
-    };
+    // Draw beacons using shared function
+    drawBeacons(ctx, beacons, coords);
 
-    const drawBackground = () => {
-      ctx.fillStyle = colorPalette.background.default;
-      ctx.fillRect(0, 0, width, height);
-
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(offsetX - 1, offsetY - 1, renderWidth + 2, renderHeight + 2);
-      ctx.fillStyle = "#020617";
-      ctx.fillRect(offsetX, offsetY, renderWidth, renderHeight);
-    };
-
-    const drawGrid = () => {
-      const lineCount = 10;
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.18)";
-      ctx.lineWidth = 1;
-      for (let index = 0; index <= lineCount; index += 1) {
-        const factor = index / lineCount;
-        const x = offsetX + renderWidth * factor;
-        const y = offsetY + renderHeight * factor;
-
-        ctx.beginPath();
-        ctx.moveTo(x, offsetY);
-        ctx.lineTo(x, offsetY + renderHeight);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(offsetX, y);
-        ctx.lineTo(offsetX + renderWidth, y);
-        ctx.stroke();
-      }
-    };
-
-    const drawEntities = () => {
-      const entities = mapConfig.map.entities || [];
-      entities.forEach((entity) => {
-        if (
-          !entity ||
-          !Array.isArray(entity.points) ||
-          entity.points.length === 0
-        ) {
-          return;
-        }
-
-        const strokeColor = entity.strokeColor || entity.color || "#94A3B8";
-        const fillColor = entity.fillColor || null;
-        const lineWidth = entity.lineWidth || 1;
-
-        if (entity.type === "line" || entity.type === "polyline") {
-          const [firstPoint, ...rest] = entity.points;
-          if (!firstPoint || firstPoint.length < 2) {
-            return;
-          }
-
-          ctx.beginPath();
-          ctx.strokeStyle = strokeColor;
-          ctx.lineWidth = lineWidth;
-          const [startX, startY] = toCanvas(firstPoint[0], firstPoint[1]);
-          ctx.moveTo(startX, startY);
-
-          rest.forEach((point) => {
-            if (!point || point.length < 2) {
-              return;
-            }
-            const [x, y] = toCanvas(point[0], point[1]);
-            ctx.lineTo(x, y);
-          });
-
-          if (entity.type === "polyline" && entity.closed) {
-            ctx.closePath();
-          }
-          if (fillColor && entity.type === "polyline" && entity.closed) {
-            ctx.fillStyle = fillColor;
-            ctx.fill();
-          }
-          ctx.stroke();
-        }
-      });
-    };
-
-    const drawBeacons = () => {
-      beacons.forEach((beacon) => {
-        const [cx, cy] = toCanvas(beacon.x ?? 0, beacon.y ?? 0);
-        ctx.beginPath();
-        ctx.fillStyle = "#FBBF24";
-        ctx.arc(cx, cy, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#1F2937";
-        ctx.font = "600 11px Inter, ui-sans-serif, system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(
-          beacon.displayName || beacon.uuid || "Beacon",
-          cx,
-          cy - 12,
-        );
-      });
-    };
-
-    const drawTrails = () => {
-      if (!showTrails) {
-        return;
-      }
-
+    // Draw trails
+    if (showTrails) {
       trackers.forEach((tracker) => {
         const history = tracker.position_history || [];
         if (history.length < 2) {
@@ -231,58 +137,42 @@ export default function LiveMap({
         ctx.stroke();
         ctx.setLineDash([]);
       });
-    };
+    }
 
-    const drawTrackers = () => {
-      trackers.forEach((tracker) => {
-        if (!tracker.position) {
-          return;
-        }
-        const [cx, cy] = toCanvas(tracker.position.x, tracker.position.y);
+    // Draw trackers
+    trackers.forEach((tracker) => {
+      if (!tracker.position) {
+        return;
+      }
+      const [cx, cy] = toCanvas(tracker.position.x, tracker.position.y);
+      ctx.beginPath();
+      ctx.fillStyle = "#38BDF8";
+      ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const label = tracker.trackerId || "unknown";
+      drawText(label, cx + 14, cy - 12, "#E2E8F0", 12, "left");
+
+      if (tracker.accuracy != null) {
+        const radius = clamp(tracker.accuracy * scale * 0.35, 12, 80);
         ctx.beginPath();
-        ctx.fillStyle = "#38BDF8";
-        ctx.arc(cx, cy, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#FFFFFF";
+        ctx.strokeStyle = "rgba(59, 130, 246, 0.18)";
         ctx.lineWidth = 2;
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.stroke();
+      }
+    });
 
-        const label = tracker.trackerId || "unknown";
-        drawText(label, cx + 14, cy - 12, "#E2E8F0", 12, "left");
-
-        if (tracker.accuracy != null) {
-          const radius = clamp(tracker.accuracy * scale * 0.35, 12, 80);
-          ctx.beginPath();
-          ctx.strokeStyle = "rgba(59, 130, 246, 0.18)";
-          ctx.lineWidth = 2;
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      });
-    };
-
-    const drawFooter = () => {
-      const title = mapConfig?.map?.name
-        ? `${mapConfig.map.name} · ${mapConfig.map.width}m × ${mapConfig.map.height}m`
-        : "Live tracker map";
-      drawText(title, offsetX + 12, offsetY + 16, "#E2E8F0", 13, "left");
-      drawText(
-        "Coordinates are rendered in meters",
-        width - 12,
-        height - 12,
-        "rgba(148, 163, 184, 0.88)",
-        11,
-        "right",
-      );
-    };
-
-    drawBackground();
-    drawGrid();
-    drawEntities();
-    drawBeacons();
-    drawTrails();
-    drawTrackers();
-    drawFooter();
+    // Draw footer using shared function
+    drawMapFooter(ctx, {
+      mapConfig,
+      canvasWidth: width,
+      canvasHeight: height,
+      coords,
+    });
 
     if (trackers.length === 0 && wsStatus === "connected") {
       const message = "No trackers connected";
@@ -290,7 +180,17 @@ export default function LiveMap({
       ctx.fillRect(width * 0.15, height * 0.4, width * 0.7, 50);
       drawText(message, width / 2, height * 0.44, "#E2E8F0", 18, "center");
     }
-  }, [mapConfig, beacons, trackers, showTrails, canvasSize, wsStatus]);
+  }, [
+    mapConfig,
+    beacons,
+    trackers,
+    showTrails,
+    canvasSize,
+    wsStatus,
+    coords,
+    toCanvas,
+    scale,
+  ]);
 
   const trackerCount = trackers.length;
   const beaconCount = beacons.length;

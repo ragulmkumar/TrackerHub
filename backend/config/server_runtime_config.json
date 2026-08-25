@@ -12,5 +12,11 @@
   "kalman": {
     "processVariance": 1,
     "measurementVariance": 10
+  },
+  "webhook": {
+    "enabled": false
+  },
+  "trackerAccessControl": {
+    "enabled": false
   }
 }

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import AreaLocationConfigCard from "../components/AreaLocationConfigCard";
 import AuthenticationCard from "../components/AuthenticationCard";
 import ChirpStackConfigCard from "../components/ChirpStackConfigCard";
+import MapEditor from "../components/MapEditor";
 import SenseCapConfigCard from "../components/SenseCapConfigCard";
 import ServerRuntimeCard from "../components/ServerRuntimeCard";
 import TrackerAccessControlCard from "../components/TrackerAccessControlCard";
@@ -43,6 +44,7 @@ export default function ConfigurationPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [placementBeacon, setPlacementBeacon] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -101,6 +103,37 @@ export default function ConfigurationPage() {
       next.beacons[index] = { ...next.beacons[index], [field]: value };
       return next;
     });
+  }
+
+  function handleBeaconsChange(newBeacons) {
+    setConfig((current) => ({
+      ...current,
+      beacons: newBeacons,
+    }));
+  }
+
+  function handlePlaceOnMap(beacon, index) {
+    if (beacon.x != null && beacon.y != null) {
+      // Beacon already placed - could open editor at its position
+      // For now, just allow re-placement
+    }
+    setPlacementBeacon({ ...beacon, _index: index });
+  }
+
+  function handlePlacementComplete(beacon, x, y) {
+    const index = beacon._index;
+    if (index !== undefined && index >= 0 && index < config.beacons.length) {
+      setConfig((current) => {
+        const next = { ...current, beacons: [...current.beacons] };
+        next.beacons[index] = { ...next.beacons[index], x, y };
+        return next;
+      });
+    }
+    setPlacementBeacon(null);
+  }
+
+  function handlePlacementCancel() {
+    setPlacementBeacon(null);
   }
 
   return (
@@ -302,6 +335,37 @@ export default function ConfigurationPage() {
                 </div>
               </section>
 
+              <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-sm backdrop-blur lg:col-span-2">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2
+                      className="text-xl font-semibold"
+                      style={{ color: colorPalette.text.primary }}
+                    >
+                      Map editor
+                    </h2>
+                    <p
+                      className="text-sm"
+                      style={{ color: colorPalette.text.secondary }}
+                    >
+                      Click beacon to drag. Use beacon list to place new beacons
+                      on the map.
+                    </p>
+                  </div>
+                </div>
+
+                <MapEditor
+                  mapConfig={config}
+                  beacons={config.beacons}
+                  onBeaconsChange={handleBeaconsChange}
+                  placementBeacon={placementBeacon}
+                  onPlacementComplete={handlePlacementComplete}
+                  onPlacementCancel={handlePlacementCancel}
+                  canvasWidth={900}
+                  canvasHeight={520}
+                />
+              </section>
+
               <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-sm backdrop-blur">
                 <div className="mb-4">
                   <h2
@@ -314,8 +378,8 @@ export default function ConfigurationPage() {
                     className="text-sm"
                     style={{ color: colorPalette.text.secondary }}
                   >
-                    Update beacon coordinates and labels to reflect the physical
-                    layout.
+                    Update beacon properties. Click "Place on Map" to position a
+                    beacon visually.
                   </p>
                 </div>
 
@@ -351,18 +415,20 @@ export default function ConfigurationPage() {
                         />
                         <input
                           className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm"
-                          value={beacon.x}
+                          value={beacon.x != null ? beacon.x.toFixed(2) : ""}
                           type="number"
-                          placeholder="X"
+                          step="0.01"
+                          placeholder="X (m)"
                           onChange={(event) =>
                             updateBeacon(index, "x", Number(event.target.value))
                           }
                         />
                         <input
                           className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm"
-                          value={beacon.y}
+                          value={beacon.y != null ? beacon.y.toFixed(2) : ""}
                           type="number"
-                          placeholder="Y"
+                          step="0.01"
+                          placeholder="Y (m)"
                           onChange={(event) =>
                             updateBeacon(index, "y", Number(event.target.value))
                           }
@@ -380,6 +446,24 @@ export default function ConfigurationPage() {
                             )
                           }
                         />
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handlePlaceOnMap(beacon, index)}
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                          disabled={placementBeacon !== null}
+                        >
+                          {placementBeacon?._index === index
+                            ? "Placing..."
+                            : "Place on Map"}
+                        </button>
+                        {beacon.x != null && beacon.y != null && (
+                          <span className="text-xs text-slate-500 self-center">
+                            Positioned: ({Number(beacon.x).toFixed(2)},{" "}
+                            {Number(beacon.y).toFixed(2)})m
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}

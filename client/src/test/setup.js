@@ -49,6 +49,7 @@ globalThis.sessionStorage = sessionStorageMock;
 HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
   fillRect: vi.fn(),
   clearRect: vi.fn(),
+  strokeRect: vi.fn(),
   beginPath: vi.fn(),
   arc: vi.fn(),
   fill: vi.fn(),
