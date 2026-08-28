@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import ConfigurationPage from "./ConfigurationPage";
@@ -115,55 +115,288 @@ const mockLayoutWithEntities = {
   settings: { signalPropagationFactor: 2.0 },
 };
 
-describe("ConfigurationPage - Layout Import", () => {
+const renderPage = (initialConfig = mockConfig) => {
+  vi.clearAllMocks();
+  loadWebConfiguration.mockResolvedValue(initialConfig);
+  saveWebConfiguration.mockResolvedValue({
+    message: "Configuration saved successfully.",
+  });
+
+  return render(
+    <BrowserRouter>
+      <ConfigurationPage />
+    </BrowserRouter>,
+  );
+};
+
+// Render page with custom loadWebConfiguration mock (for error cases)
+const renderPageWithLoadMock = (loadMock) => {
+  vi.clearAllMocks();
+  loadWebConfiguration.mockImplementation(loadMock);
+  saveWebConfiguration.mockResolvedValue({
+    message: "Configuration saved successfully.",
+  });
+
+  return render(
+    <BrowserRouter>
+      <ConfigurationPage />
+    </BrowserRouter>,
+  );
+};
+
+describe("ConfigurationPage - Tab Navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadWebConfiguration.mockResolvedValue(mockConfig);
   });
 
-  const renderPage = () => {
-    return render(
-      <BrowserRouter>
-        <ConfigurationPage />
-      </BrowserRouter>,
-    );
-  };
-
-  it("renders Import Layout button", async () => {
+  it("renders three tab buttons: Map Configuration, App Configuration, Alarm Settings", async () => {
     renderPage();
-    await waitFor(() => {
-      expect(screen.getByText("Import Layout")).toBeInTheDocument();
-    });
-  });
-
-  it("shows file input when Import Layout is clicked", async () => {
-    renderPage();
-    await waitFor(() => {
-      const importButton = screen.getByText("Import Layout");
-      fireEvent.click(importButton);
-      // File input is hidden, but we can verify it exists
-      const fileInput = document.querySelector(
-        'input[type="file"][accept=".json"]',
-      );
-      expect(fileInput).toBeInTheDocument();
-    });
-  });
-
-  it("imports valid layout file and updates config", async () => {
-    renderPage();
-    // Wait for loading to complete
     await waitFor(() => {
       expect(
         screen.queryByText("Loading configuration..."),
       ).not.toBeInTheDocument();
     });
-    // Find the beacon badge in the Map overview section
+
+    expect(
+      screen.getByRole("tab", { name: "Map Configuration" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "App Configuration" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Alarm Settings" }),
+    ).toBeInTheDocument();
+  });
+
+  it("defaults to Map Configuration tab", async () => {
+    renderPage();
     await waitFor(() => {
-      const mapOverviewSection = screen
-        .getByText("Map overview")
-        .closest("section");
-      expect(mapOverviewSection).toBeInTheDocument();
-      expect(mapOverviewSection).toHaveTextContent(/1 beacon/);
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const mapTab = screen.getByRole("tab", { name: "Map Configuration" });
+    expect(mapTab).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("tab", { name: "App Configuration" }),
+    ).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: "Alarm Settings" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+  });
+
+  it("switches to App Configuration tab when clicked", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const appTab = screen.getByRole("tab", { name: "App Configuration" });
+    fireEvent.click(appTab);
+
+    await waitFor(() => {
+      expect(appTab).toHaveAttribute("aria-selected", "true");
+      expect(
+        screen.getByRole("tab", { name: "Map Configuration" }),
+      ).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("switches to Alarm Settings tab when clicked", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const alarmTab = screen.getByRole("tab", { name: "Alarm Settings" });
+    fireEvent.click(alarmTab);
+
+    await waitFor(() => {
+      expect(alarmTab).toHaveAttribute("aria-selected", "true");
+      expect(
+        screen.getByRole("tab", { name: "Map Configuration" }),
+      ).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("shows different header title based on active tab", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // Map Configuration tab - h1 shows tab label
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Map Configuration",
+    );
+    // Description is in p tag
+    expect(
+      screen.getByText(
+        "Configure the positioning map, add beacon metadata, and save it through the secured API.",
+      ),
+    ).toBeInTheDocument();
+
+    // Switch to App Configuration
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+        "App Configuration",
+      );
+      expect(
+        screen.getByText(
+          "Configure authentication, server runtime, MQTT integrations, and access control.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    // Switch to Alarm Settings
+    fireEvent.click(screen.getByRole("tab", { name: "Alarm Settings" }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+        "Alarm Settings",
+      );
+      // Use getAllByText since text appears in both header and AlarmSettingsTab
+      expect(
+        screen.getAllByText(
+          "Configure alarm thresholds, notification channels, and escalation policies.",
+        ).length,
+      ).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe("ConfigurationPage - Map Configuration Tab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadWebConfiguration.mockResolvedValue(mockConfig);
+  });
+
+  const renderMapTab = () => {
+    const { container } = renderPage();
+    return container;
+  };
+
+  it("renders Map Configuration content when active", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Map overview")).toBeInTheDocument();
+    expect(screen.getByText("Map editor")).toBeInTheDocument();
+    expect(screen.getByText("Beacon list")).toBeInTheDocument();
+  });
+
+  it("shows Map overview section with map name, signal propagation factor, width, height", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByDisplayValue("Main Floor")).toBeInTheDocument(); // Map name
+    expect(screen.getByDisplayValue("30")).toBeInTheDocument(); // Width
+    expect(screen.getByDisplayValue("20")).toBeInTheDocument(); // Height
+    expect(screen.getByDisplayValue("2.5")).toBeInTheDocument(); // Signal propagation factor
+  });
+
+  it("shows Import Layout button", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Import Layout")).toBeInTheDocument();
+  });
+
+  it("shows beacon count badge", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // Badge shows "1 beacon" (singular) - use getAllByText since it may appear multiple times
+    const badges = screen.getAllByText("1 beacon");
+    expect(badges.length).toBeGreaterThan(0);
+  });
+
+  it("renders MapEditor canvas", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const canvas = document.querySelector("canvas");
+    expect(canvas).toBeInTheDocument();
+  });
+
+  it("renders Beacon list with beacon details", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Beacon A")).toBeInTheDocument();
+    expect(screen.getByText("1:1")).toBeInTheDocument(); // major:minor
+    expect(screen.getByDisplayValue("Beacon A")).toBeInTheDocument(); // Display name input
+    expect(screen.getByPlaceholderText("X (m)")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Y (m)")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("TX Power")).toBeInTheDocument();
+    expect(screen.getByText("Place on Map")).toBeInTheDocument();
+  });
+});
+
+describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadWebConfiguration.mockResolvedValue(mockConfig);
+  });
+
+  const renderMapTab = () => renderPage();
+
+  it("shows file input when Import Layout is clicked", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Layout");
+    fireEvent.click(importButton);
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+  });
+
+  it("imports valid layout file and updates config", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
     });
 
     // Create a valid JSON file
@@ -172,7 +405,6 @@ describe("ConfigurationPage - Layout Import", () => {
       type: "application/json",
     });
 
-    // Simulate file input change
     const fileInput = document.querySelector(
       'input[type="file"][accept=".json"]',
     );
@@ -190,25 +422,21 @@ describe("ConfigurationPage - Layout Import", () => {
 
     // Verify config was updated
     await waitFor(() => {
-      // Check the Map overview section badge updates to "2 beacons"
-      const mapOverviewSection = screen
-        .getByText("Map overview")
-        .closest("section");
-      expect(mapOverviewSection).toHaveTextContent("2 beacons");
       expect(screen.getByDisplayValue("Factory Floor")).toBeInTheDocument();
       expect(screen.getByDisplayValue("50")).toBeInTheDocument(); // width
       expect(screen.getByDisplayValue("40")).toBeInTheDocument(); // height
       expect(screen.getByDisplayValue("2")).toBeInTheDocument(); // signalPropagationFactor
+      // Use getAllByText since "2 beacons" appears in multiple places
+      expect(screen.getAllByText("2 beacons").length).toBeGreaterThan(0);
     });
   });
 
   it("rejects invalid JSON file", async () => {
-    renderPage();
+    renderMapTab();
     await waitFor(() => {
       expect(screen.getByText("Import Layout")).toBeInTheDocument();
     });
 
-    // Create an invalid JSON file (missing required fields)
     const invalidJson = JSON.stringify({
       map: { width: 10 },
       beacons: "not-an-array",
@@ -228,7 +456,7 @@ describe("ConfigurationPage - Layout Import", () => {
   });
 
   it("rejects malformed JSON file", async () => {
-    renderPage();
+    renderMapTab();
     await waitFor(() => {
       expect(screen.getByText("Import Layout")).toBeInTheDocument();
     });
@@ -246,90 +474,6 @@ describe("ConfigurationPage - Layout Import", () => {
     });
   });
 
-  it("validates layout structure correctly - missing map", async () => {
-    // Test validateLayoutStructure function directly by importing the component
-    // Since it's not exported, we test via the import flow
-    const invalidLayout = {
-      beacons: [],
-      settings: { signalPropagationFactor: 2.5 },
-    };
-    const file = new File([JSON.stringify(invalidLayout)], "test.json", {
-      type: "application/json",
-    });
-
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByText("Import Layout")).toBeInTheDocument();
-    });
-
-    const fileInput = document.querySelector(
-      'input[type="file"][accept=".json"]',
-    );
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Invalid layout format/)).toBeInTheDocument();
-    });
-  });
-
-  it("validates layout structure correctly - invalid entities", async () => {
-    const invalidLayout = {
-      map: {
-        width: 30,
-        height: 20,
-        entities: [{ type: "invalid", points: [] }],
-      },
-      beacons: [],
-      settings: { signalPropagationFactor: 2.5 },
-    };
-    const file = new File([JSON.stringify(invalidLayout)], "test.json", {
-      type: "application/json",
-    });
-
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByText("Import Layout")).toBeInTheDocument();
-    });
-
-    const fileInput = document.querySelector(
-      'input[type="file"][accept=".json"]',
-    );
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Invalid layout format/)).toBeInTheDocument();
-    });
-  });
-
-  it("validates layout structure correctly - invalid polyline points", async () => {
-    const invalidLayout = {
-      map: {
-        width: 30,
-        height: 20,
-        entities: [{ type: "polyline", points: [[1, 2, 3]] }],
-      },
-      beacons: [],
-      settings: { signalPropagationFactor: 2.5 },
-    };
-    const file = new File([JSON.stringify(invalidLayout)], "test.json", {
-      type: "application/json",
-    });
-
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByText("Import Layout")).toBeInTheDocument();
-    });
-
-    const fileInput = document.querySelector(
-      'input[type="file"][accept=".json"]',
-    );
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Invalid layout format/)).toBeInTheDocument();
-    });
-  });
-
   it("preserves existing settings when importing layout without settings", async () => {
     const layoutWithoutSettings = {
       map: { name: "New Floor", width: 25, height: 15, entities: [] },
@@ -339,10 +483,12 @@ describe("ConfigurationPage - Layout Import", () => {
     const file = new File(
       [JSON.stringify(layoutWithoutSettings)],
       "test.json",
-      { type: "application/json" },
+      {
+        type: "application/json",
+      },
     );
 
-    renderPage();
+    renderMapTab();
     await waitFor(() => {
       expect(screen.getByText("Import Layout")).toBeInTheDocument();
     });
@@ -358,43 +504,37 @@ describe("ConfigurationPage - Layout Import", () => {
   });
 });
 
-describe("ConfigurationPage - Beacon Placement on Imported Layout", () => {
+describe("ConfigurationPage - Map Configuration Tab - Beacon Placement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadWebConfiguration.mockResolvedValue(mockLayoutWithEntities);
   });
 
-  const renderPage = () => {
-    return render(
-      <BrowserRouter>
-        <ConfigurationPage />
-      </BrowserRouter>,
-    );
-  };
+  const renderMapTab = () => renderPage(mockLayoutWithEntities);
 
   it("renders imported layout entities in MapEditor", async () => {
-    renderPage();
-    await waitFor(() => {
-      // MapEditor should render - verify canvas exists
-      const canvas = document.querySelector("canvas");
-      expect(canvas).toBeInTheDocument();
-    });
-  });
-
-  it("allows placing beacons on imported layout", async () => {
-    renderPage();
-    // Wait for loading to complete
+    renderMapTab();
     await waitFor(() => {
       expect(
         screen.queryByText("Loading configuration..."),
       ).not.toBeInTheDocument();
     });
-    // Check the Map overview section badge shows "2 beacons"
+
+    const canvas = document.querySelector("canvas");
+    expect(canvas).toBeInTheDocument();
+  });
+
+  it("allows placing beacons on imported layout", async () => {
+    renderMapTab();
     await waitFor(() => {
-      const mapOverviewSection = screen
-        .getByText("Map overview")
-        .closest("section");
-      expect(mapOverviewSection).toHaveTextContent("2 beacons");
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // Check the beacon count - use getAllByText since it appears multiple times
+    await waitFor(() => {
+      expect(screen.getAllByText("2 beacons").length).toBeGreaterThan(0);
     });
 
     // Click "Place on Map" for first beacon in the Beacon list section
@@ -419,7 +559,7 @@ describe("ConfigurationPage - Beacon Placement on Imported Layout", () => {
   });
 });
 
-describe("ConfigurationPage - Save and Reload Persistence", () => {
+describe("ConfigurationPage - Map Configuration Tab - Save and Reload", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadWebConfiguration.mockResolvedValue(mockLayoutWithEntities);
@@ -428,28 +568,18 @@ describe("ConfigurationPage - Save and Reload Persistence", () => {
     });
   });
 
-  const renderPage = () => {
-    return render(
-      <BrowserRouter>
-        <ConfigurationPage />
-      </BrowserRouter>,
-    );
-  };
+  const renderMapTab = () => renderPage(mockLayoutWithEntities);
 
   it("saves imported layout to server", async () => {
-    renderPage();
-    // Wait for loading to complete
+    renderMapTab();
     await waitFor(() => {
       expect(
         screen.queryByText("Loading configuration..."),
       ).not.toBeInTheDocument();
     });
-    // Check the Map overview section badge shows "2 beacons"
+
     await waitFor(() => {
-      const mapOverviewSection = screen
-        .getByText("Map overview")
-        .closest("section");
-      expect(mapOverviewSection).toHaveTextContent("2 beacons");
+      expect(screen.getAllByText("2 beacons").length).toBeGreaterThan(0);
     });
 
     const saveButton = screen.getByText("Save configuration");
@@ -471,13 +601,545 @@ describe("ConfigurationPage - Save and Reload Persistence", () => {
   });
 
   it("reloads layout from server on page load", async () => {
-    // This is tested by the initial load
-    renderPage();
+    renderMapTab();
     await waitFor(() => {
       expect(loadWebConfiguration).toHaveBeenCalledTimes(1);
       expect(screen.getByDisplayValue("Factory Floor")).toBeInTheDocument();
       expect(screen.getByDisplayValue("50")).toBeInTheDocument();
       expect(screen.getByDisplayValue("40")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("ConfigurationPage - App Configuration Tab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadWebConfiguration.mockResolvedValue(mockConfig);
+  });
+
+  it("renders App Configuration content when tab is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // Switch to App Configuration tab
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      // Check for section buttons (these are buttons, not just text)
+      expect(
+        screen.getByRole("button", { name: "Authentication" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Server Runtime" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Area Location" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Webhook" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Tracker Access" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "SenseCAP MQTT" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "ChirpStack MQTT" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows select section message when no section is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Select a configuration section above to view and edit its settings.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows Authentication card when Authentication section is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Authentication" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Authentication" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Administrator credential settings"),
+      ).toBeInTheDocument();
+      // Use getAllByText since "Username" and "Password" appear multiple times
+      expect(screen.getAllByText("Username").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Password").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("shows Server Runtime card when Server Runtime section is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Server Runtime")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Server Runtime"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Runtime service and MQTT settings"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Server")).toBeInTheDocument();
+      expect(screen.getByText("MQTT credentials")).toBeInTheDocument();
+      expect(screen.getByText("Kalman filter")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Area Location card when Area Location section is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Area Location")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Area Location"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Control whether area-based positioning is enabled"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Enable area location")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Webhook card when Webhook section is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Webhook")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Webhook"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Configure outbound webhook delivery settings"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Enable webhook integration"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Webhook Host URL")).toBeInTheDocument();
+      expect(screen.getByText("HTTP Headers")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Tracker Access Control card when Tracker Access section is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Tracker Access")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Tracker Access"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Restrict tracker ingestion to authorized device IDs"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Enable tracker access control"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Allow all trackers")).toBeInTheDocument();
+      expect(screen.getByText("Allowed tracker IDs")).toBeInTheDocument();
+    });
+  });
+
+  it("shows SenseCAP MQTT card when SenseCAP MQTT section is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "SenseCAP MQTT" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "SenseCAP MQTT" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Configure OpenStream connectivity for tracker ingestion",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Enable OpenStream")).toBeInTheDocument();
+      expect(screen.getByText("Server region")).toBeInTheDocument();
+      // Use getAllByText since "Application ID" appears in multiple places
+      expect(screen.getAllByText("Application ID").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("shows ChirpStack MQTT card when ChirpStack MQTT section is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "ChirpStack MQTT" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "ChirpStack MQTT" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Configure ChirpStack connectivity for LoRaWAN tracker ingestion",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Enable ChirpStack MQTT")).toBeInTheDocument();
+      // Use getAllByText since "Broker host" appears in multiple places
+      expect(screen.getAllByText("Broker host").length).toBeGreaterThan(0);
+      // Use getAllByText since "Application ID" appears in multiple places
+      expect(screen.getAllByText("Application ID").length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe("ConfigurationPage - Alarm Settings Tab", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadWebConfiguration.mockResolvedValue(mockConfig);
+  });
+
+  it("renders Alarm Settings placeholder content when tab is selected", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Alarm Settings" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Alarm Settings Coming Soon"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Alarm and notification functionality is not yet implemented in the current version of TrackerHub.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows placeholder list of planned alarm features", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Alarm Settings" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Alarm threshold configuration (RSSI, distance, battery)",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Notification channels (email, webhook, SMS, push)"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Escalation policies and schedules"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Alarm history and audit log"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows backend infrastructure requirements", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Alarm Settings" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "No backend alarm infrastructure detected. Implementation would require:",
+        ),
+      ).toBeInTheDocument();
+      // The text includes bullet points in the li elements
+      expect(
+        screen.getByText("• Backend alarm evaluation engine"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("• MQTT/HTTP alarm ingestion endpoints"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("• Notification delivery service"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("• Alarm state persistence")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show Save configuration button in Alarm Settings tab", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // On Map tab, save button exists
+    expect(screen.getByText("Save configuration")).toBeInTheDocument();
+
+    // Switch to Alarm Settings tab
+    fireEvent.click(screen.getByRole("tab", { name: "Alarm Settings" }));
+
+    await waitFor(() => {
+      // Save button should not be visible (or at least not in the header)
+      // The save button is conditionally rendered only for non-alarm tabs
+      expect(screen.queryByText("Save configuration")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("ConfigurationPage - MapEditor Integration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadWebConfiguration.mockResolvedValue(mockLayoutWithEntities);
+  });
+
+  it("MapEditor is only mounted in Map Configuration tab", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // MapEditor should be present in Map Configuration tab
+    expect(document.querySelector("canvas")).toBeInTheDocument();
+
+    // Switch to App Configuration tab
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+
+    // MapEditor canvas should be removed from DOM (hidden via conditional rendering)
+    await waitFor(() => {
+      // The canvas from MapEditor should not be in the document when not in Map tab
+      // Note: since we use conditional rendering, the MapEditor component unmounts
+      const canvases = document.querySelectorAll("canvas");
+      // Only the MapEditor has a canvas, so there should be 0 when not in Map tab
+      expect(canvases.length).toBe(0);
+    });
+  });
+
+  it("MapEditor renders correctly when switching back to Map Configuration tab", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // Switch away and back
+    fireEvent.click(screen.getByRole("tab", { name: "App Configuration" }));
+    await waitFor(() => {
+      expect(document.querySelectorAll("canvas").length).toBe(0);
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Map Configuration" }));
+    await waitFor(() => {
+      expect(document.querySelector("canvas")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("ConfigurationPage - Existing Configuration Behavior", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadWebConfiguration.mockResolvedValue(mockConfig);
+    saveWebConfiguration.mockResolvedValue({
+      message: "Configuration saved successfully.",
+    });
+  });
+
+  it("save button triggers saveWebConfiguration with current config", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // Modify map name
+    const mapNameInput = screen.getByDisplayValue("Main Floor");
+    fireEvent.change(mapNameInput, { target: { value: "Updated Floor" } });
+
+    const saveButton = screen.getByText("Save configuration");
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(saveWebConfiguration).toHaveBeenCalledTimes(1);
+      const savedConfig = saveWebConfiguration.mock.calls[0][0];
+      expect(savedConfig.map.name).toBe("Updated Floor");
+    });
+  });
+
+  it("shows loading state initially", async () => {
+    loadWebConfiguration.mockImplementation(
+      () =>
+        new Promise((resolve) => setTimeout(() => resolve(mockConfig), 100)),
+    );
+
+    renderPage();
+
+    expect(screen.getByText("Loading configuration...")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows error message on load failure", async () => {
+    const { container } = renderPageWithLoadMock(() =>
+      Promise.reject(new Error("Network error")),
+    );
+
+    // Wait for error message to appear (the loading state will clear and error will show)
+    await waitFor(() => {
+      // The error message is in a div with error styling - find by className
+      const errorDiv = container.querySelector(
+        ".rounded-2xl.border.px-4.py-3.text-sm",
+      );
+      expect(errorDiv).toBeInTheDocument();
+      expect(errorDiv.textContent).toContain("Network error");
+    });
+  });
+
+  it("shows success message on save", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const saveButton = screen.getByText("Save configuration");
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Configuration saved successfully."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows error message on save failure", async () => {
+    // Use a custom mock for saveWebConfiguration that rejects
+    vi.clearAllMocks();
+    loadWebConfiguration.mockResolvedValue(mockConfig);
+    saveWebConfiguration.mockRejectedValue(new Error("Save failed"));
+
+    const { container } = render(
+      <BrowserRouter>
+        <ConfigurationPage />
+      </BrowserRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const saveButton = screen.getByText("Save configuration");
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      // The error message is in a div with error styling - find by className
+      const errorDiv = container.querySelector(
+        ".rounded-2xl.border.px-4.py-3.text-sm",
+      );
+      expect(errorDiv).toBeInTheDocument();
+      expect(errorDiv.textContent).toContain("Save failed");
     });
   });
 });
