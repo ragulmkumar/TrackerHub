@@ -80,21 +80,23 @@ func main() {
 		startupRuntimeConfig = &models.ServerRuntimeConfig{}
 	}
 
-	webUIConfig, err := configManager.LoadWebUIConfig("config/web_config.json")
+	webUIConfigStore, err := config.NewWebUIConfigStore(configManager, "config/web_config.json")
 	if err != nil {
 		log.Printf("Warning: Failed to load web UI config: %v", err)
 		// Create a default web UI config
-		webUIConfig = &models.WebUIConfig{
+		defaultWebUIConfig := &models.WebUIConfig{
 			Map:     nil,
 			Beacons: []models.WebUIBeaconConfig{},
 			Settings: models.WebUISettings{
 				SignalPropagationFactor: 2.5,
 			},
 		}
+		webUIConfigStore = &config.WebUIConfigStore{}
+		webUIConfigStore.Set(defaultWebUIConfig)
 	}
 
 	// Initialize components
-	apiHandler := api.NewAPIHandler(configManager, runtimeConfigStore)
+	apiHandler := api.NewAPIHandler(configManager, runtimeConfigStore, webUIConfigStore)
 	authHandler, err := api.NewAuthHandler(configManager)
 	if err != nil {
 		log.Fatalf("Failed to initialize auth handler: %v", err)
@@ -105,7 +107,7 @@ func main() {
 	}
 	authService := auth.NewAuthService(*authConfig)
 	positioningService := positioning.NewPositioningService()
-	mqttHandler := mqtt.NewMQTTHandler(&startupRuntimeConfig.MQTT, webUIConfig, runtimeConfigStore)
+	mqttHandler := mqtt.NewMQTTHandler(&startupRuntimeConfig.MQTT, webUIConfigStore, runtimeConfigStore)
 	wsHub := ws.NewHub()
 
 	// Start the WebSocket hub event loop BEFORE any broadcast can be issued.
@@ -113,7 +115,7 @@ func main() {
 	// sending before this goroutine starts would block forever and deadlock.
 	go wsHub.Run()
 
-	mqttHandler.SetMessageHandler(func(report *models.TrackerReport) {
+	mqttHandler.SetMessageHandler(func(report *models.TrackerReport, webUIConfig *models.WebUIConfig) {
 		if report == nil {
 			return
 		}

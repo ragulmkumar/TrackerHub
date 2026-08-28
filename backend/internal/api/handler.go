@@ -17,15 +17,17 @@ import (
 type APIHandler struct {
 	configManager      *config.ConfigManager
 	runtimeConfigStore *config.RuntimeConfigStore
+	webUIConfigStore   *config.WebUIConfigStore
 	trackerStates      map[string]models.TrackerState
 	trackerMu          sync.RWMutex
 }
 
 // NewAPIHandler creates a new API handler
-func NewAPIHandler(configManager *config.ConfigManager, runtimeConfigStore *config.RuntimeConfigStore) *APIHandler {
+func NewAPIHandler(configManager *config.ConfigManager, runtimeConfigStore *config.RuntimeConfigStore, webUIConfigStore *config.WebUIConfigStore) *APIHandler {
 	return &APIHandler{
 		configManager:      configManager,
 		runtimeConfigStore: runtimeConfigStore,
+		webUIConfigStore:   webUIConfigStore,
 		trackerStates:      make(map[string]models.TrackerState),
 	}
 }
@@ -69,6 +71,11 @@ func (h *APIHandler) UpdateWebUIConfig(c *gin.Context) {
 	if err := h.configManager.SaveWebUIConfig("config/web_config.json", &config); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save web UI configuration"})
 		return
+	}
+
+	// Update in-memory store so positioning uses new config immediately
+	if h.webUIConfigStore != nil {
+		h.webUIConfigStore.Set(&config)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Web UI configuration updated successfully"})

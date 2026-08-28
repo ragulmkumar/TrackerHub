@@ -18,18 +18,18 @@ import (
 type MQTTHandler struct {
 	client           MQTT.Client
 	config           *models.MQTTServerConfig
-	webUIConfig      *models.WebUIConfig
+	webUIConfigStore *config.WebUIConfigStore
 	runtimeConfig    *config.RuntimeConfigStore
-	messageHandler   func(*models.TrackerReport)
+	messageHandler   func(*models.TrackerReport, *models.WebUIConfig)
 	errorHandler     func(error)
 	connectionStatus string // "connected", "disconnected", "connecting"
 }
 
 // NewMQTTHandler creates a new MQTT handler
-func NewMQTTHandler(config *models.MQTTServerConfig, webUIConfig *models.WebUIConfig, runtimeConfig *config.RuntimeConfigStore) *MQTTHandler {
+func NewMQTTHandler(config *models.MQTTServerConfig, webUIConfigStore *config.WebUIConfigStore, runtimeConfig *config.RuntimeConfigStore) *MQTTHandler {
 	return &MQTTHandler{
 		config:           config,
-		webUIConfig:      webUIConfig,
+		webUIConfigStore: webUIConfigStore,
 		runtimeConfig:    runtimeConfig,
 		connectionStatus: "disconnected",
 	}
@@ -94,7 +94,8 @@ func (h *MQTTHandler) GetConnectionStatus() string {
 }
 
 // SetMessageHandler sets the function to call when a tracker report is received
-func (h *MQTTHandler) SetMessageHandler(handler func(*models.TrackerReport)) {
+// The handler will receive the current web UI config snapshot for positioning
+func (h *MQTTHandler) SetMessageHandler(handler func(*models.TrackerReport, *models.WebUIConfig)) {
 	h.messageHandler = handler
 }
 
@@ -173,7 +174,8 @@ func (h *MQTTHandler) handleMQTTMessage(msg MQTT.Message) {
 	if h.messageHandler != nil {
 		report := h.parseTrackerReport(deviceEUI, msg.Payload())
 		if report != nil {
-			h.messageHandler(report)
+			webUIConfig := h.webUIConfigStore.Get()
+			h.messageHandler(report, webUIConfig)
 		}
 	}
 }
