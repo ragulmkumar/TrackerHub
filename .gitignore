@@ -5,9 +5,26 @@
 .DS_Store
 Thumbs.db
 
-# Editor directories and files
-.vscode/
+# Personal shell / user config dotfiles (accidentally tracked before)
+.bash_profile
+.bashrc
+.bash_history
+.profile
+.zshrc
+.zprofile
+.gitconfig
+.ripgreprc
+.mcp.json
+
+# AI tooling / IDE personal settings
+.idea
 .idea/
+.vscode
+.vscode/
+.claude/
+.claude
+
+# Editor directories and files
 *.sublime-workspace
 *.sublime-project
 
@@ -84,9 +101,14 @@ uploads/
 backend/tmp/
 backend/bin/
 backend/config/
+backend/server
+backend/trackerhub
+backend/source_startup.pid
+*.pid
 
 # Client specific
 client/node_modules/
+client/.npm-cache/
 client/.vite/
 client/.svelte-kit/
 client/.output/
