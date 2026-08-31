@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"testing"
 
 	"trackerHub/backend/internal/models"
@@ -86,19 +87,18 @@ func TestValidateServerRuntimeConfig(t *testing.T) {
 		t.Fatalf("expected invalid runtime config to fail validation")
 	}
 
-	enabledWithoutRegion := &models.ServerRuntimeConfig{
+	enabledWithMissingTopic := &models.ServerRuntimeConfig{
 		Server: models.WebServerConfig{Port: 8022},
 		MQTT: models.MQTTServerConfig{
 			Enabled:       true,
 			BrokerPort:    1883,
 			ApplicationID: "app-01",
-			TopicPattern:  "tracker/+/event",
 		},
 		Kalman: models.KalmanParams{ProcessVariance: 1.0, MeasurementVariance: 10.0},
 	}
 
-	if err := handler.ValidateServerRuntimeConfig(enabledWithoutRegion); err == nil {
-		t.Fatalf("expected runtime config to require a server region when MQTT is enabled")
+	if err := handler.ValidateServerRuntimeConfig(enabledWithMissingTopic); err == nil {
+		t.Fatalf("expected runtime config to require a topic pattern when MQTT is enabled")
 	}
 
 	invalidTrackerAccess := &models.ServerRuntimeConfig{
@@ -167,6 +167,9 @@ func TestNormalizeMACInWebUIConfig(t *testing.T) {
 }
 
 func TestDuplicateDetection_UUIDMajorMinor(t *testing.T) {
+	// Two beacons with the SAME UUID+Major+Minor but DIFFERENT MAC addresses
+	// are valid (physical devices with unique MACs but shared iBeacon identity).
+	// This matches the reference IndoorPositioning behavior.
 	beacons := []models.WebUIBeaconConfig{
 		{
 			UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
@@ -178,22 +181,61 @@ func TestDuplicateDetection_UUIDMajorMinor(t *testing.T) {
 		{
 			UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
 			Major:       1,
-			Minor:       1, // same identity as beacon A
+			Minor:       1, // same identity as beacon A, but different MAC
 			MACAddress:  "112233445566",
-			DisplayName: "Beacon B (duplicate)",
+			DisplayName: "Beacon B (same identity, different MAC)",
+		},
+	}
+
+	// With MAC addresses present, no duplicate should be detected
+	seenMACs := make(map[string]bool)
+	for _, b := range beacons {
+		if b.MACAddress != "" {
+			if seenMACs[b.MACAddress] {
+				t.Fatalf("unexpected duplicate MAC: %s", b.MACAddress)
+			}
+			seenMACs[b.MACAddress] = true
+			continue
+		}
+		// No MAC: fall back to UUID+Major+Minor identity
+		identity := fmt.Sprintf("%s-%d-%d", b.UUID, b.Major, b.Minor)
+		if seenMACs[identity] {
+			t.Fatalf("unexpected duplicate identity without MAC: %s", identity)
+		}
+		seenMACs[identity] = true
+	}
+}
+
+func TestDuplicateDetection_NoMACUsesIdentity(t *testing.T) {
+	// Two beacons with NO MAC address and same UUID+Major+Minor SHOULD
+	// be flagged as duplicates, because without MACs they are ambiguous.
+	beacons := []models.WebUIBeaconConfig{
+		{
+			UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+			Major:       1,
+			Minor:       1,
+			MACAddress:  "",
+			DisplayName: "Beacon A (no MAC)",
+		},
+		{
+			UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+			Major:       1,
+			Minor:       1,
+			MACAddress:  "",
+			DisplayName: "Beacon B (no MAC, same identity)",
 		},
 	}
 
 	seen := make(map[string]bool)
 	for _, b := range beacons {
-		identity := b.UUID + "-" + string(rune(b.Major)) + "-" + string(rune(b.Minor))
+		identity := fmt.Sprintf("%s-%d-%d", b.UUID, b.Major, b.Minor)
 		if seen[identity] {
 			// Expected duplicate
 			return
 		}
 		seen[identity] = true
 	}
-	t.Fatal("expected duplicate detection to catch identical UUID+Major+Minor")
+	t.Fatal("expected duplicate detection to catch identical UUID+Major+Minor without MACs")
 }
 
 func TestDuplicateDetection_MACAddress(t *testing.T) {

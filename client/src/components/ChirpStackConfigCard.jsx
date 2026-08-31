@@ -292,6 +292,21 @@ export default function ChirpStackConfigCard() {
                 className="block text-sm"
                 style={{ color: colorPalette.text.secondary }}
               >
+                Server region
+                <input
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                  value={config.mqtt.serverRegion}
+                  disabled={!editing}
+                  onChange={(event) =>
+                    updateField("serverRegion", event.target.value)
+                  }
+                  placeholder="e.g. eu, us, cn (optional for ChirpStack)"
+                />
+              </label>
+              <label
+                className="block text-sm"
+                style={{ color: colorPalette.text.secondary }}
+              >
                 Username
                 <input
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"

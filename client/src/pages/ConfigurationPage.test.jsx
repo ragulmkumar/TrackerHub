@@ -1074,7 +1074,8 @@ describe("ConfigurationPage - App Configuration Tab", () => {
       );
       // ToggleSwitch renders an "Enabled"/"Disabled" status badge
       expect(screen.getAllByText("Disabled").length).toBeGreaterThan(0);
-      expect(screen.getByText("Server region")).toBeInTheDocument();
+      // "Server region" appears in both SenseCAP and ChirpStack cards
+      expect(screen.getAllByText("Server region").length).toBeGreaterThan(0);
       // Use getAllByText since "Application ID" appears in multiple places
       expect(screen.getAllByText("Application ID").length).toBeGreaterThan(0);
     });

@@ -16,8 +16,8 @@ const defaultFormState = {
   beacons: [
     {
       uuid: "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
-      major: 1,
-      minor: 1,
+      major: 10001,
+      minor: 19641,
       x: 3,
       y: 4,
       txPower: -59,
@@ -113,15 +113,36 @@ function validateBeaconForm(beacon, existingBeacons, mode, editIndex) {
   if (!beacon.displayName || beacon.displayName.trim() === "")
     errors.displayName = "Display name is required";
 
-  // Duplicate identity check (UUID + Major + Minor)
-  const identity = `${(beacon.uuid || "").toUpperCase()}-${beacon.major}-${beacon.minor}`;
+  // Duplicate identity check
+  // Reference behavior (Seeed IndoorPositioning): a beacon is a duplicate only if
+  // it matches UUID+Major+Minor AND has the same MAC address (or both have no MAC).
+  // Multiple beacons can share UUID/Major/Minor but must have unique MAC addresses.
+  const uuidMatch = (a, b) =>
+    (a.uuid || "").toUpperCase() === (b.uuid || "").toUpperCase() &&
+    a.major === b.major &&
+    a.minor === b.minor;
+
   const isDuplicate = existingBeacons.some((b, i) => {
     if (mode === "edit" && i === editIndex) return false;
-    return `${(b.uuid || "").toUpperCase()}-${b.major}-${b.minor}` === identity;
+
+    // Must share the same UUID+Major+Minor identity
+    if (!uuidMatch(b, beacon)) return false;
+
+    // Match by MAC address when both have one
+    const existingMAC = normalizeMAC(b.macAddress).normalized;
+    const newMAC = normalizeMAC(beacon.macAddress).normalized;
+
+    if (existingMAC && newMAC) {
+      return existingMAC === newMAC; // duplicate only if same MAC
+    }
+    // If neither has a MAC, the UUID+Major+Minor is the only identity
+    if (!existingMAC && !newMAC) return true;
+    // If only one has a MAC, they are considered different devices
+    return false;
   });
   if (isDuplicate)
     errors.identity =
-      "A beacon with this UUID, Major, and Minor already exists.";
+      "A beacon with this UUID, Major, Minor, and MAC already exists.";
 
   // Duplicate MAC check (if MAC provided)
   if (beacon.macAddress && beacon.macAddress.trim() !== "") {
@@ -168,8 +189,8 @@ export default function MapConfigurationTab({
   const [editingBeacon, setEditingBeacon] = useState({
     displayName: "",
     uuid: "",
-    major: 1,
-    minor: 1,
+    major: 10001,
+    minor: 19641,
     macAddress: "",
     x: 0,
     y: 0,
@@ -306,8 +327,8 @@ export default function MapConfigurationTab({
     setEditingBeacon({
       displayName: "",
       uuid: "",
-      major: 1,
-      minor: 1,
+      major: 10001,
+      minor: 19641,
       macAddress: "",
       x: 0,
       y: 0,

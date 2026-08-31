@@ -69,8 +69,8 @@ func (h *APIHandler) UpdateWebUIConfig(c *gin.Context) {
 	}
 
 	// Normalize MAC addresses and detect duplicates before saving
-	seenIdentities := make(map[string]bool) // UUID+Major+Minor
-	seenMACs := make(map[string]bool)       // MAC address
+	seenMACs := make(map[string]bool) // MAC address (unique per beacon)
+
 	for i := range config.Beacons {
 		b := &config.Beacons[i]
 
@@ -86,17 +86,10 @@ func (h *APIHandler) UpdateWebUIConfig(c *gin.Context) {
 			b.MACAddress = normalized
 		}
 
-		// Check for duplicate UUID+Major+Minor identity
-		identity := fmt.Sprintf("%s-%d-%d", b.UUID, b.Major, b.Minor)
-		if seenIdentities[identity] {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": fmt.Sprintf("A beacon with UUID %s Major %d Minor %d already exists.", b.UUID, b.Major, b.Minor),
-			})
-			return
-		}
-		seenIdentities[identity] = true
-
-		// Check for duplicate MAC address (only if MAC is provided)
+		// Beacons are uniquely identified by MAC address when one is provided.
+		// Multiple beacons may share the same UUID+Major+Minor (e.g. a single
+		// iBeacon factory batch) but each physical device must have a unique MAC.
+		// This matches the reference IndoorPositioning project behavior.
 		if b.MACAddress != "" {
 			if seenMACs[b.MACAddress] {
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -105,7 +98,19 @@ func (h *APIHandler) UpdateWebUIConfig(c *gin.Context) {
 				return
 			}
 			seenMACs[b.MACAddress] = true
+			continue
 		}
+
+		// If no MAC address is provided, fall back to the UUID+Major+Minor identity
+		// so that two beacons without MACs don't collide with each other.
+		identity := fmt.Sprintf("%s-%d-%d", b.UUID, b.Major, b.Minor)
+		if seenMACs[identity] {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("A beacon with UUID %s Major %d Minor %d already exists (no MAC address provided).", b.UUID, b.Major, b.Minor),
+			})
+			return
+		}
+		seenMACs[identity] = true
 	}
 
 	if err := h.configManager.SaveWebUIConfig("config/web_config.json", &config); err != nil {
@@ -194,9 +199,6 @@ func (h *APIHandler) ValidateServerRuntimeConfig(config *models.ServerRuntimeCon
 	}
 	if config.MQTT.Enabled && config.MQTT.ApplicationID == "" {
 		return fmt.Errorf("application ID is required when MQTT is enabled")
-	}
-	if config.MQTT.Enabled && config.MQTT.ServerRegion == "" {
-		return fmt.Errorf("server region is required when MQTT is enabled")
 	}
 	if config.MQTT.Enabled && config.MQTT.TopicPattern == "" {
 		return fmt.Errorf("topic pattern is required when MQTT is enabled")

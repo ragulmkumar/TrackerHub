@@ -19,8 +19,8 @@ const defaultFormState = {
   beacons: [
     {
       uuid: "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
-      major: 1,
-      minor: 1,
+      major: 10001,
+      minor: 19641,
       x: 3,
       y: 4,
       txPower: -59,
@@ -83,7 +83,10 @@ export default function ConfigurationPage() {
     };
   }, []);
 
-  const beaconCount = useMemo(() => config.beacons?.length || 0, [config.beacons]);
+  const beaconCount = useMemo(
+    () => config.beacons?.length || 0,
+    [config.beacons],
+  );
 
   async function handleSave() {
     try {

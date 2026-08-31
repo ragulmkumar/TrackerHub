@@ -79,14 +79,36 @@ function validateBeaconForm(beacon, existingBeacons, mode, editIndex) {
   if (!beacon.displayName || beacon.displayName.trim() === "")
     errors.displayName = "Display name is required";
 
-  const identity = `${(beacon.uuid || "").toUpperCase()}-${beacon.major}-${beacon.minor}`;
+  // Duplicate identity check
+  // Reference behavior (Seeed IndoorPositioning): a beacon is a duplicate only if
+  // it matches UUID+Major+Minor AND has the same MAC address (or both have no MAC).
+  // Multiple beacons can share UUID/Major/Minor but must have unique MAC addresses.
+  const uuidMatch = (a, b) =>
+    (a.uuid || "").toUpperCase() === (b.uuid || "").toUpperCase() &&
+    a.major === b.major &&
+    a.minor === b.minor;
+
   const isDuplicate = existingBeacons.some((b, i) => {
     if (mode === "edit" && i === editIndex) return false;
-    return `${(b.uuid || "").toUpperCase()}-${b.major}-${b.minor}` === identity;
+
+    // Must share the same UUID+Major+Minor identity
+    if (!uuidMatch(b, beacon)) return false;
+
+    // Match by MAC address when both have one
+    const existingMAC = normalizeMAC(b.macAddress).normalized;
+    const newMAC = normalizeMAC(beacon.macAddress).normalized;
+
+    if (existingMAC && newMAC) {
+      return existingMAC === newMAC; // duplicate only if same MAC
+    }
+    // If neither has a MAC, the UUID+Major+Minor is the only identity
+    if (!existingMAC && !newMAC) return true;
+    // If only one has a MAC, they are considered different devices
+    return false;
   });
   if (isDuplicate)
     errors.identity =
-      "A beacon with this UUID, Major, and Minor already exists.";
+      "A beacon with this UUID, Major, Minor, and MAC already exists.";
 
   if (beacon.macAddress && beacon.macAddress.trim() !== "") {
     const { normalized } = normalizeMAC(beacon.macAddress);
@@ -274,13 +296,68 @@ describe("Phase 7 — Duplicate Beacon Detection", () => {
     },
   ];
 
-  it("detects duplicate UUID+Major+Minor", () => {
+  it("allows same UUID+Major+Minor with a different MAC address", () => {
+    // Reference (Seeed IndoorPositioning) allows multiple physical beacons
+    // that share the same iBeacon UUID/Major/Minor as long as they have
+    // different MAC addresses.
     const { valid, errors } = validateBeaconForm(
       {
         uuid: "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
         major: 1,
         minor: 1,
         macAddress: "112233445566",
+        displayName: "New Beacon",
+        x: 0,
+        y: 0,
+        txPower: -59,
+      },
+      existingBeacons,
+      "add",
+      -1,
+    );
+    expect(valid).toBe(true);
+    expect(errors.identity).toBeUndefined();
+  });
+
+  it("detects duplicate UUID+Major+Minor when both have no MAC", () => {
+    const { valid, errors } = validateBeaconForm(
+      {
+        uuid: "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+        major: 1,
+        minor: 1,
+        macAddress: "",
+        displayName: "New Beacon",
+        x: 0,
+        y: 0,
+        txPower: -59,
+      },
+      [
+        {
+          uuid: "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+          major: 1,
+          minor: 1,
+          macAddress: "",
+          displayName: "Existing Beacon",
+          x: 0,
+          y: 0,
+          txPower: -59,
+        },
+      ],
+      "add",
+      -1,
+    );
+    expect(valid).toBe(false);
+    expect(errors.identity).toBeDefined();
+    expect(errors.identity).toContain("already exists");
+  });
+
+  it("detects duplicate when same identity AND same MAC", () => {
+    const { valid, errors } = validateBeaconForm(
+      {
+        uuid: "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+        major: 1,
+        minor: 1,
+        macAddress: "C300003E7DE0",
         displayName: "New Beacon",
         x: 0,
         y: 0,
