@@ -47,7 +47,26 @@ export default function MapConfigurationTab({
   const [localError, setLocalError] = useState("");
   const [placementBeacon, setPlacementBeacon] = useState(null);
   const [importType, setImportType] = useState("json");
+  const [mapDimensionErrors, setMapDimensionErrors] = useState({});
   const fileInputRef = useRef(null);
+
+  /**
+   * Validate map dimension value
+   * Returns error message if invalid, or empty string if valid
+   */
+  function validateMapDimension(value, fieldName) {
+    if (value === null || value === undefined || value === "") {
+      return `${fieldName} is required`;
+    }
+    const num = Number(value);
+    if (isNaN(num)) {
+      return `${fieldName} must be a number`;
+    }
+    if (num <= 0) {
+      return `${fieldName} must be greater than 0`;
+    }
+    return "";
+  }
 
   // Determine which config/setConfig to use
   const config = parentConfig || localConfig;
@@ -104,7 +123,10 @@ export default function MapConfigurationTab({
     };
   }, [parentConfig]);
 
-  const beaconCount = useMemo(() => safeConfig.beacons?.length || 0, [safeConfig.beacons]);
+  const beaconCount = useMemo(
+    () => safeConfig.beacons?.length || 0,
+    [safeConfig.beacons],
+  );
 
   function updateBeacon(index, field, value) {
     setConfig((current) => {
@@ -131,7 +153,11 @@ export default function MapConfigurationTab({
 
   function handlePlacementComplete(beacon, x, y) {
     const index = beacon._index;
-    if (index !== undefined && index >= 0 && index < safeConfig.beacons.length) {
+    if (
+      index !== undefined &&
+      index >= 0 &&
+      index < safeConfig.beacons.length
+    ) {
       setConfig((current) => {
         const next = { ...current, beacons: [...current.beacons] };
         next.beacons[index] = { ...next.beacons[index], x, y };
@@ -485,10 +511,16 @@ export default function MapConfigurationTab({
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-medium" style={{ color: colorPalette.success.dark }}>
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: colorPalette.success.dark }}
+                >
                   Floor-plan image loaded
                 </p>
-                <p className="text-xs" style={{ color: colorPalette.success.main }}>
+                <p
+                  className="text-xs"
+                  style={{ color: colorPalette.success.main }}
+                >
                   {safeConfig.map.backgroundImageWidth
                     ? `${safeConfig.map.backgroundImageWidth} × ${safeConfig.map.backgroundImageHeight} px`
                     : "Unknown dimensions"}
@@ -554,18 +586,40 @@ export default function MapConfigurationTab({
             Width (m)
             <input
               type="number"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none"
+              step="0.01"
+              min="0.01"
+              className={`mt-2 w-full rounded-xl border bg-white/80 px-3 py-2 text-sm outline-none transition-colors ${
+                mapDimensionErrors.width
+                  ? "border-red-400 bg-red-50/50"
+                  : "border-slate-200"
+              }`}
               value={safeConfig.map.width}
-              onChange={(event) =>
-                setConfig((current) => ({
-                  ...current,
-                  map: {
-                    ...current.map,
-                    width: Number(event.target.value),
-                  },
-                }))
-              }
+              onChange={(event) => {
+                const value = event.target.value;
+                const error = validateMapDimension(value, "Width");
+                setMapDimensionErrors((prev) => ({
+                  ...prev,
+                  width: error,
+                }));
+                if (!error) {
+                  setConfig((current) => ({
+                    ...current,
+                    map: {
+                      ...current.map,
+                      width: Number(value),
+                    },
+                  }));
+                }
+              }}
             />
+            {mapDimensionErrors.width && (
+              <p
+                className="mt-1 text-xs"
+                style={{ color: colorPalette.error.main }}
+              >
+                {mapDimensionErrors.width}
+              </p>
+            )}
           </label>
           <label
             className="text-sm font-medium"
@@ -574,18 +628,40 @@ export default function MapConfigurationTab({
             Height (m)
             <input
               type="number"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none"
+              step="0.01"
+              min="0.01"
+              className={`mt-2 w-full rounded-xl border bg-white/80 px-3 py-2 text-sm outline-none transition-colors ${
+                mapDimensionErrors.height
+                  ? "border-red-400 bg-red-50/50"
+                  : "border-slate-200"
+              }`}
               value={safeConfig.map.height}
-              onChange={(event) =>
-                setConfig((current) => ({
-                  ...current,
-                  map: {
-                    ...current.map,
-                    height: Number(event.target.value),
-                  },
-                }))
-              }
+              onChange={(event) => {
+                const value = event.target.value;
+                const error = validateMapDimension(value, "Height");
+                setMapDimensionErrors((prev) => ({
+                  ...prev,
+                  height: error,
+                }));
+                if (!error) {
+                  setConfig((current) => ({
+                    ...current,
+                    map: {
+                      ...current.map,
+                      height: Number(value),
+                    },
+                  }));
+                }
+              }}
             />
+            {mapDimensionErrors.height && (
+              <p
+                className="mt-1 text-xs"
+                style={{ color: colorPalette.error.main }}
+              >
+                {mapDimensionErrors.height}
+              </p>
+            )}
           </label>
         </div>
       </div>

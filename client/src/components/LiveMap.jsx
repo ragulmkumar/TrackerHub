@@ -110,6 +110,7 @@ export default function LiveMap({
       canvasHeight: height,
       coords,
       backgroundColor: colorPalette.background.default,
+      backgroundImage: mapConfig?.map?.backgroundImage || null,
     });
 
     // Draw beacons using shared function

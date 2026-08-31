@@ -149,8 +149,14 @@ export function drawMapBase(
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
   // Map area background
-  ctx.fillStyle = "#111827";
-  ctx.fillRect(offsetX - 1, offsetY - 1, renderWidth + 2, renderHeight + 2);
+  if (!backgroundImage) {
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(offsetX - 1, offsetY - 1, renderWidth + 2, renderHeight + 2);
+
+    // Only fill with background color if no background image
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(offsetX, offsetY, renderWidth, renderHeight);
+  }
 
   // Draw background image if provided
   if (backgroundImage) {
@@ -161,10 +167,20 @@ export function drawMapBase(
     ctx.clip();
 
     const img =
-      backgroundImage instanceof HTMLImageElement ? backgroundImage : null;
+      backgroundImage &&
+      typeof backgroundImage === "object" &&
+      ("complete" in backgroundImage ||
+        "naturalWidth" in backgroundImage ||
+        "src" in backgroundImage)
+        ? backgroundImage
+        : null;
     const imgSrc = typeof backgroundImage === "string" ? backgroundImage : null;
 
-    if (img && img.complete && img.naturalWidth > 0) {
+    if (
+      img &&
+      (img.complete === undefined || img.complete) &&
+      img.naturalWidth > 0
+    ) {
       // Image already loaded
       ctx.globalAlpha = 0.6; // Semi-transparent overlay
       ctx.drawImage(img, offsetX, offsetY, renderWidth, renderHeight);
@@ -173,7 +189,9 @@ export function drawMapBase(
       // Load image from data URL
       const tempImg = new Image();
       tempImg.onload = () => {
-        // Image will be drawn on next render cycle
+        ctx.globalAlpha = 0.6;
+        ctx.drawImage(tempImg, offsetX, offsetY, renderWidth, renderHeight);
+        ctx.globalAlpha = 1.0;
       };
       tempImg.src = imgSrc;
       // Draw immediately if we can (might not work on first render)
@@ -184,10 +202,6 @@ export function drawMapBase(
       }
     }
     ctx.restore();
-  } else {
-    // Only fill with background color if no background image
-    ctx.fillStyle = backgroundColor;
-    ctx.fillRect(offsetX, offsetY, renderWidth, renderHeight);
   }
 
   // Grid
