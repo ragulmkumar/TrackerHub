@@ -674,4 +674,264 @@ It smooths/generates stable tracker positions in real time: each new `CalculateP
 - Backend: `go build ./...` ✅ OK; `go test ./...` ✅ all packages pass; `go vet ./...` ✅ clean.
 - Frontend: `vitest run` ✅ **151/151 pass** (10 test files); `npm run build` ✅ succeeds (only non-failing lottie-eval & chunk-size warnings).
 
+---
+
+# Beacon Workflow Comparison
+
+## 1. Reference Workflow (IndoorPositioning)
+
+### Beacon Fields
+
+**File:** `Solution_IndoorPositioning_H5/server/models.py` — `WebUIBeaconConfig` and `MiniprogramBeaconConfig`
+
+| Field                     | Description                                    |
+| ------------------------- | ---------------------------------------------- |
+| `uuid`                    | iBeacon UUID (required)                        |
+| `major`                   | iBeacon Major value (required, 0–65535)        |
+| `minor`                   | iBeacon Minor value (required, 0–65535)        |
+| `x`, `y`                  | Position in meters (required)                  |
+| `txPower`                 | RSSI at 1m for distance calculation (required) |
+| `displayName`             | User-friendly display name (optional)          |
+| `macAddress` / `deviceId` | Physical MAC address or device ID (optional)   |
+
+### Add/Create Beacon
+
+- **Explicit "Add New Beacon" button** in `BeaconManagerTab.vue` (disabled if no map or not connected to local service)
+- **Modal form** with all fields editable: Display Name, UUID, Major, Minor, MAC/Device ID, X, Y, TxPower
+- **Scan via Local Service** button connects to Node.js `local-beacon-service` (port 8081), discovers iBeacons via BLE, and can "Add This Beacon" to pre-fill the form
+
+### Beacon Details & Identity
+
+- **Primary identity**: `(uuid, major, minor)` tuple — uniqueness enforced in UI (`saveBeacon` checks this triple + deviceId)
+- **Physical join key**: `macAddress` / `deviceId` — used for BLE scan matching and MQTT positioning
+- **UUID case-normalized** to uppercase on save
+
+### X/Y Coordinates
+
+- Stored in **meters** (`WebUIBeaconConfig.x`, `y` in `WebUIBeaconConfig`)
+- Map dimensions also in meters; canvas rendering inverts Y (bottom-left origin)
+
+### Place Beacon on Map
+
+- User clicks **"Place on Map"** button in `BeaconManagerTab` → emits `beacon-selected-for-placement` → parent switches to `MapEditorTab` which shows crosshair cursor
+- **Two-click confirm + ESC cancel** in `MapEditorTab.vue` (`handleMapClick`, `confirmBeaconPlacement`, `cancelBeaconPlacement`)
+- Coordinates emitted back as `beacon-coordinates-updated` event with `{...beacon, x, y}`
+
+### Move Beacon
+
+- **No drag support** in reference. Beacon is repositioned by re-selecting "Place on Map" and clicking a new location.
+
+### Save / Load
+
+- **Config emitted up** via `beacons-updated` to parent (`MasterConfigView.vue`, `ConfigurationSuiteView.vue`)
+- Parent handles **JSON import/export** (file upload or paste) and persists to `server/web_config.json` via `config_manager.py` + `main.py` POST `/api/configuration/web`
+- Server loads on startup via `load_web_ui_config()` (no live in-memory store — full reload on save)
+
+### Physical Beacon Identity Mapping (MQTT → Config)
+
+- **MQTT handler** (`main.py` `on_message` → `parse_sensecap_payload`) extracts MAC from SenseCAP `value[].mac`
+- **Positioning** (`positioning.py` `calculate_position`) matches by **case-insensitive MAC**: `cfg_beacon.macAddress.lower() == detected.macAddress.lower()`
+- Config beacon's `x`, `y`, `txPower` used directly
+
+---
+
+## 2. TrackerHub Workflow
+
+### Beacon Fields
+
+**File:** `backend/internal/models/models.go` — `WebUIBeaconConfig`
+
+| Field         | JSON          | Required     | Notes                 |
+| ------------- | ------------- | ------------ | --------------------- |
+| `UUID`        | `uuid`        | yes (len=32) | iBeacon UUID string   |
+| `Major`       | `major`       | yes          | 0–65535               |
+| `Minor`       | `minor`       | yes          | 0–65535               |
+| `X`           | `x`           | yes          | meters                |
+| `Y`           | `y`           | yes          | meters                |
+| `TXPower`     | `txPower`     | yes          | RSSI at 1m            |
+| `DisplayName` | `displayName` | no           | optional label        |
+| `MACAddress`  | `macAddress`  | no           | **physical join key** |
+
+### Add/Create Beacon
+
+- **No explicit "Add" button** in current UI — beacons come from:
+  1. **JSON layout import** (`MapConfigurationTab.jsx` `handleImportLayout`)
+  2. **Default fixture** (hard-coded `"AA11BB22CC33"` in `defaultFormState`)
+  3. **Direct `web_config.json` editing**
+
+### Beacon Details & Form
+
+- **Inline editing** in `MapConfigurationTab.jsx` beacon list cards: `displayName`, `x`, `y`, `txPower`
+- **NOT editable in UI**: `MACAddress`, `UUID`, `Major`, `Minor`
+- "Place on Map" button per beacon
+
+### Beacon Identity
+
+- **Config list identity**: UUID + index (React key `${uuid}-${index}`)
+- **Physical join key**: `MACAddress` — **the only field used for MQTT→config matching** in `CalculatePosition`
+
+### X/Y Coordinates
+
+- **Meters** (`float64`), stored in `WebUIBeaconConfig.X`, `Y`
+- Map dimensions in meters; shared `useMapCanvas.js` does meter↔pixel conversion with Y-flip
+
+### Place Beacon on Map
+
+- `MapConfigurationTab` `handlePlaceOnMap` → `MapEditor.jsx` two-click confirm + ESC cancel
+- `handleCanvasClick`: click 1 sets preview, click 2 calls `onPlacementComplete(beacon, x, y)` → updates beacon X/Y
+- Live green preview with coordinates during placement
+
+### Move / Drag Beacon
+
+- **Full drag support** in `MapEditor.jsx`: 10px hit-test, live preview, dashed line, `onBeaconsChange` on move
+- Position updates live in state; must click "Save configuration" to persist
+
+### Save / Load
+
+- **Frontend**: `saveWebConfiguration()` → `POST /api/config/web`
+- **Backend**: `UpdateWebUIConfig` → `SaveWebUIConfig()` to JSON + `WebUIConfigStore.Set()` (live in-memory store)
+- **Live effect**: Positioning uses new config **immediately without restart** (proven by `phase5_mqtt_to_livemap_test.go`)
+- **Load**: `loadWebConfiguration()` → `GET /api/config/web`; startup in `main.go` seeds store
+
+### Physical Beacon Identity Mapping (MQTT → Config)
+
+- **MQTT parsing** (`mqtt_handler.go` `parseTrackerReport`):
+  ```go
+  detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
+  ```
+  Normalizes `c3:00:00:3e:7d:e0` → `C300003E7DE0`
+- **Positioning** (`positioning.go` `CalculatePosition`):
+  ```go
+  beaconMap[webUIConfig.Beacons[i].MACAddress] = &webUIConfig.Beacons[i]
+  ...
+  if cfgBeacon, exists := beaconMap[detected.MACAddress]; exists {
+      // uses cfgBeacon.X, cfgBeacon.Y
+  }
+  ```
+- **Exact string match** on normalized uppercase-no-colons MAC
+
+---
+
+## 3. Beacon Field Comparison
+
+| Field                        | Reference                            | TrackerHub                                     | Status                                            |
+| ---------------------------- | ------------------------------------ | ---------------------------------------------- | ------------------------------------------------- |
+| UUID                         | `uuid` (required)                    | `UUID` (required, len=32)                      | ✅ SAME FUNCTIONALITY                             |
+| Major                        | `major` (required)                   | `Major` (required)                             | ✅ SAME FUNCTIONALITY                             |
+| Minor                        | `minor` (required)                   | `Minor` (required)                             | ✅ SAME FUNCTIONALITY                             |
+| X (meters)                   | `x` (required)                       | `X` (required)                                 | ✅ SAME FUNCTIONALITY                             |
+| Y (meters)                   | `y` (required)                       | `Y` (required)                                 | ✅ SAME FUNCTIONALITY                             |
+| TXPower                      | `txPower` (required)                 | `TXPower` (required)                           | ✅ SAME FUNCTIONALITY                             |
+| DisplayName                  | `displayName` (optional)             | `DisplayName` (optional)                       | ✅ SAME FUNCTIONALITY                             |
+| Physical MAC                 | `macAddress` / `deviceId` (optional) | `MACAddress` (optional)                        | ✅ SAME FUNCTIONALITY                             |
+| **Identity for positioning** | `macAddress` (case-insensitive)      | `MACAddress` (normalized uppercase, no colons) | ⚠️ DIFFERENT IMPLEMENTATION BUT FUNCTIONALLY SAME |
+
+---
+
+## 4. Map Placement Comparison
+
+| Feature                       | Reference             | TrackerHub                                        | Status                                                    |
+| ----------------------------- | --------------------- | ------------------------------------------------- | --------------------------------------------------------- |
+| Select beacon → Place on Map  | ✅ Button + emit      | ✅ Button + state                                 | ✅ SAME FUNCTIONALITY                                     |
+| Two-click confirm             | ✅                    | ✅                                                | ✅ SAME FUNCTIONALITY                                     |
+| ESC cancel                    | ✅                    | ✅                                                | ✅ SAME FUNCTIONALITY                                     |
+| Live preview during placement | ✅                    | ✅                                                | ✅ SAME FUNCTIONALITY                                     |
+| **Drag existing beacon**      | ❌ Not implemented    | ✅ Full drag (hit-test, live update, dashed line) | ⚠️ DIFFERENT IMPLEMENTATION — TrackerHub **more capable** |
+| Coordinate precision          | Rounded to 2 decimals | Full float64                                      | ⚠️ DIFFERENT IMPLEMENTATION BUT FUNCTIONALLY SAME         |
+
+---
+
+## 5. Persistence Comparison
+
+| Aspect                       | Reference                                           | TrackerHub                                             | Status                                                    |
+| ---------------------------- | --------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------- |
+| Disk format                  | JSON (`web_config.json`, `miniprogram_config.json`) | JSON (`web_config.json`)                               | ✅ SAME FUNCTIONALITY                                     |
+| Save trigger                 | UI emit → parent → POST `/api/configuration/web`    | UI → `saveWebConfiguration()` → POST `/api/config/web` | ✅ SAME FUNCTIONALITY                                     |
+| **Live update (no restart)** | ❌ Full reload on save                              | ✅ `WebUIConfigStore.Set()` — instant                  | ⚠️ DIFFERENT IMPLEMENTATION — TrackerHub **more capable** |
+| Config import/export         | JSON file upload + paste in UI                      | JSON layout import (`handleImportLayout`)              | ✅ SAME FUNCTIONALITY                                     |
+| Default/fallback config      | Written by `config_manager.py` on missing file      | Written by `ConfigManager` on missing file             | ✅ SAME FUNCTIONALITY                                     |
+
+---
+
+## 6. Physical Beacon Identity Mapping
+
+### Chain: Configured Beacon → MQTT Detection → Positioning
+
+| Step                           | Reference                                                      | TrackerHub                                                           |
+| ------------------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **Beacon config identity**     | `(uuid, major, minor)` + optional `macAddress`                 | `MACAddress` (primary join key) + UUID+Major+Minor for list identity |
+| **MQTT payload MAC format**    | SenseCAP `value[].mac` with colons, lowercase                  | SenseCAP `value[].mac` with colons, lowercase (same)                 |
+| **MQTT MAC normalization**     | Case-insensitive comparison in `calculate_position`            | `strings.ToUpper(strings.ReplaceAll(mac, ":", ""))` → `C300003E7DE0` |
+| **Config MAC format expected** | Same format as MQTT (case-insensitive match)                   | **Must already be normalized** (uppercase, no colons)                |
+| **Positioning match**          | `cfg_beacon.macAddress.lower() == detected.macAddress.lower()` | `beaconMap[detected.MACAddress]` (exact string match)                |
+| **Coordinates used**           | `cfg_beacon.x`, `y` (meters)                                   | `cfgBeacon.X`, `Y` (meters)                                          |
+| **TXPower used**               | `cfg_beacon.txPower`                                           | `cfgBeacon.TXPower`                                                  |
+
+### Critical Consistency Check ✅
+
+- **Reference**: case-insensitive comparison means format doesn't matter
+- **TrackerHub**: MQTT normalizes to `C300003E7DE0`; config **must store the same format**
+- Test fixtures and `real-map-config.json` store `C300003E7DEF` (uppercase, no colons) — **consistent**
+- **Caveat**: TrackerHub UI does **not expose `MACAddress` field** for editing. If a user manually enters a MAC with colons/lowercase in `web_config.json`, matching would **fail**. The stored value must be pre-normalized.
+
+---
+
+## 7. Positioning Integration
+
+| Aspect                   | Reference                                   | TrackerHub                                        | Status                                            |
+| ------------------------ | ------------------------------------------- | ------------------------------------------------- | ------------------------------------------------- |
+| Matching field           | `macAddress` (case-insensitive)             | `MACAddress` (normalized exact)                   | ⚠️ DIFFERENT IMPLEMENTATION BUT FUNCTIONALLY SAME |
+| Distance formula         | Log-distance path loss (same)               | Log-distance path loss (same)                     | ✅ SAME FUNCTIONALITY                             |
+| Multilateration          | scipy `least_squares` (Levenberg-Marquardt) | Gradient descent                                  | ⚠️ DIFFERENT IMPLEMENTATION BUT FUNCTIONALLY SAME |
+| Fallback (<3 beacons)    | ❌ Returns None                             | ✅ Weighted centroid                              | TrackerHub **more capable**                       |
+| Outlier rejection        | ❌                                          | ✅ `RejectOutliers` (50m)                         | TrackerHub **more capable**                       |
+| Kalman filter            | ✅ Wired in `process_tracker_report`        | ✅ Wired via `KalmanStateStore.Apply()` (Phase 6) | ✅ SAME FUNCTIONALITY                             |
+| Beacon X/Y used directly | ✅ meters                                   | ✅ meters                                         | ✅ SAME FUNCTIONALITY                             |
+
+---
+
+## 8. Functional Gaps
+
+| Gap                               | Impact                                                                            | Required Fix                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **No "Add Beacon" UI**            | Users cannot create new beacons via UI — must import JSON or edit file            | Add "Add Beacon" button + modal with all fields (incl. `MACAddress`) in `MapConfigurationTab.jsx` |
+| **MACAddress not editable in UI** | If a beacon's MAC changes or new beacon added, must hand-edit `web_config.json`   | Expose `MACAddress` input in beacon card (validated as 12 hex chars)                              |
+| **MAC format safety**             | If config stores MAC with colons/lowercase, positioning silently fails (no match) | Add normalization on save (`UpdateWebUIConfig`) or validation; warn in UI                         |
+| **BLE beacon scanning**           | Reference has BLE scan via Node service; TrackerHub has none                      | OPTIONAL/FUTURE (out of scope per task)                                                           |
+
+---
+
+## 9. Final Status
+
+### Critical Chain Verification
+
+| Step                                | Status                                | Evidence                                           |
+| ----------------------------------- | ------------------------------------- | -------------------------------------------------- |
+| Beacon configured in UI             | ⚠️ Partial (no Add; only edit/import) | `MapConfigurationTab.jsx` list + inline edit       |
+| Beacon identity saved               | ✅                                    | `WebUIBeaconConfig` → `web_config.json`            |
+| X/Y position saved                  | ✅                                    | `X`, `Y` fields persisted                          |
+| MQTT identifies beacon              | ✅                                    | `parseTrackerReport` → `DetectedBeacon.MACAddress` |
+| Positioning finds configured beacon | ✅                                    | `CalculatePosition` `beaconMap[MACAddress]` lookup |
+| Correct coordinates used            | ✅                                    | `cfgBeacon.X`, `Y` in distance calc                |
+
+**Verdict: 🟡 BEACON WORKFLOW PARTIAL**
+
+### Why PARTIAL (not COMPLETE)
+
+The chain **works end-to-end for existing beacons** (proven by Phase 4/5 tests and `phase5_mqtt_to_livemap_test.go`), but:
+
+1. **Cannot add new beacons via UI** — must import JSON or edit `web_config.json` directly
+2. **Cannot edit `MACAddress` via UI** — the physical join key is invisible in the form
+3. **MAC format safety** — silent failure if config stores non-normalized MAC
+
+### Minimum additions to reach COMPLETE
+
+1. **Add "Add Beacon" button + modal** in `MapConfigurationTab.jsx` with all fields (including `MACAddress`)
+2. **Expose `MACAddress` as editable field** in beacon card (12 hex char validation)
+3. **Normalize MAC on save** in `UpdateWebUIConfig` (strip colons, uppercase) to prevent silent mismatch
+
+**No architecture change, no positioning/MQTT changes required.**
+
+---
+
 **STOP — no implementation performed.**

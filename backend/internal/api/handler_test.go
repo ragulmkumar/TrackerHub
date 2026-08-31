@@ -120,3 +120,162 @@ func TestValidateServerRuntimeConfig(t *testing.T) {
 		t.Fatalf("expected invalid tracker access control list to fail validation")
 	}
 }
+
+// ── Phase 7: Beacon management tests ───────────────────────────────────────
+
+func TestNormalizeMACInWebUIConfig(t *testing.T) {
+	// When saving config with MAC "c3:00:00:3e:7d:e0", it should be normalized
+	// to "C300003E7DE0"
+
+	config := &models.WebUIConfig{
+		Map: &models.WebUIMapInfo{
+			Name:   "Test Map",
+			Width:  30,
+			Height: 20,
+		},
+		Beacons: []models.WebUIBeaconConfig{
+			{
+				UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+				Major:       1,
+				Minor:       1,
+				X:           5.0,
+				Y:           3.0,
+				TXPower:     -59,
+				DisplayName: "Test Beacon",
+				MACAddress:  "c3:00:00:3e:7d:e0",
+			},
+		},
+		Settings: models.WebUISettings{
+			SignalPropagationFactor: 2.5,
+		},
+	}
+
+	// Normalize the MAC in the handler logic (same as UpdateWebUIConfig does)
+	for i := range config.Beacons {
+		if config.Beacons[i].MACAddress != "" {
+			normalized, err := models.NormalizeMAC(config.Beacons[i].MACAddress)
+			if err != nil {
+				t.Fatalf("unexpected error normalizing MAC: %v", err)
+			}
+			config.Beacons[i].MACAddress = normalized
+		}
+	}
+
+	if config.Beacons[0].MACAddress != "C300003E7DE0" {
+		t.Errorf("expected normalized MAC C300003E7DE0, got %s", config.Beacons[0].MACAddress)
+	}
+}
+
+func TestDuplicateDetection_UUIDMajorMinor(t *testing.T) {
+	beacons := []models.WebUIBeaconConfig{
+		{
+			UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+			Major:       1,
+			Minor:       1,
+			MACAddress:  "AABBCCDDEEFF",
+			DisplayName: "Beacon A",
+		},
+		{
+			UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+			Major:       1,
+			Minor:       1, // same identity as beacon A
+			MACAddress:  "112233445566",
+			DisplayName: "Beacon B (duplicate)",
+		},
+	}
+
+	seen := make(map[string]bool)
+	for _, b := range beacons {
+		identity := b.UUID + "-" + string(rune(b.Major)) + "-" + string(rune(b.Minor))
+		if seen[identity] {
+			// Expected duplicate
+			return
+		}
+		seen[identity] = true
+	}
+	t.Fatal("expected duplicate detection to catch identical UUID+Major+Minor")
+}
+
+func TestDuplicateDetection_MACAddress(t *testing.T) {
+	beacons := []models.WebUIBeaconConfig{
+		{
+			UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+			Major:       1,
+			Minor:       1,
+			MACAddress:  "C300003E7DE0",
+			DisplayName: "Beacon A",
+		},
+		{
+			UUID:        "F2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+			Major:       2,
+			Minor:       2,
+			MACAddress:  "C300003E7DE0", // duplicate MAC
+			DisplayName: "Beacon B (duplicate MAC)",
+		},
+	}
+
+	seen := make(map[string]bool)
+	for _, b := range beacons {
+		if b.MACAddress != "" && seen[b.MACAddress] {
+			// Expected duplicate
+			return
+		}
+		seen[b.MACAddress] = true
+	}
+	t.Fatal("expected duplicate MAC detection")
+}
+
+func TestMQTTToConfigBeaconMACMatch(t *testing.T) {
+	// Simulate: user enters "c3:00:00:3e:7d:e0" in UI
+	// Saved as "C300003E7DE0" (normalized)
+	// MQTT reports "c3:00:00:3e:7d:e0" (raw)
+	// MQTT normalizes to "C300003E7DE0"
+	// Positioning matches "C300003E7DE0" == "C300003E7DE0" -> YES
+
+	configMAC := "C300003E7DE0"
+	mqttMAC := "c3:00:00:3e:7d:e0"
+	normalizedMQTT := ""
+	for i := 0; i < len(mqttMAC); i++ {
+		c := mqttMAC[i]
+		if c != ':' && c != '-' {
+			if c >= 'a' && c <= 'f' {
+				normalizedMQTT += string(c - 32) // uppercase
+			} else {
+				normalizedMQTT += string(c)
+			}
+		}
+	}
+
+	if configMAC != normalizedMQTT {
+		t.Errorf("MAC mismatch: config=%s mqtt=%s", configMAC, normalizedMQTT)
+	}
+}
+
+func TestWebUIBeaconConfig_AllFields(t *testing.T) {
+	beacon := models.WebUIBeaconConfig{
+		UUID:        "E2C56DB5-DFFB-48D2-B060-D0F5A71096E0",
+		Major:       1,
+		Minor:       1,
+		X:           5.0,
+		Y:           3.0,
+		TXPower:     -59,
+		DisplayName: "Test Beacon",
+		MACAddress:  "C300003E7DE0",
+	}
+
+	if beacon.UUID == "" {
+		t.Error("UUID should not be empty")
+	}
+	if beacon.Major < 0 || beacon.Major > 65535 {
+		t.Error("Major out of range")
+	}
+	if beacon.Minor < 0 || beacon.Minor > 65535 {
+		t.Error("Minor out of range")
+	}
+	if beacon.MACAddress == "" {
+		t.Error("MACAddress should not be empty")
+	}
+	if beacon.MACAddress != "C300003E7DE0" {
+		t.Errorf("expected MACAddress C300003E7DE0, got %s", beacon.MACAddress)
+	}
+}

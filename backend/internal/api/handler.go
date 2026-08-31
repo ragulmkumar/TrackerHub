@@ -68,6 +68,46 @@ func (h *APIHandler) UpdateWebUIConfig(c *gin.Context) {
 		return
 	}
 
+	// Normalize MAC addresses and detect duplicates before saving
+	seenIdentities := make(map[string]bool) // UUID+Major+Minor
+	seenMACs := make(map[string]bool)       // MAC address
+	for i := range config.Beacons {
+		b := &config.Beacons[i]
+
+		// Normalize MAC address if provided
+		if b.MACAddress != "" {
+			normalized, err := models.NormalizeMAC(b.MACAddress)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": fmt.Sprintf("Invalid MAC address for beacon %q: %s", b.DisplayName, err.Error()),
+				})
+				return
+			}
+			b.MACAddress = normalized
+		}
+
+		// Check for duplicate UUID+Major+Minor identity
+		identity := fmt.Sprintf("%s-%d-%d", b.UUID, b.Major, b.Minor)
+		if seenIdentities[identity] {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("A beacon with UUID %s Major %d Minor %d already exists.", b.UUID, b.Major, b.Minor),
+			})
+			return
+		}
+		seenIdentities[identity] = true
+
+		// Check for duplicate MAC address (only if MAC is provided)
+		if b.MACAddress != "" {
+			if seenMACs[b.MACAddress] {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": fmt.Sprintf("A beacon with MAC address %s already exists.", b.MACAddress),
+				})
+				return
+			}
+			seenMACs[b.MACAddress] = true
+		}
+	}
+
 	if err := h.configManager.SaveWebUIConfig("config/web_config.json", &config); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save web UI configuration"})
 		return

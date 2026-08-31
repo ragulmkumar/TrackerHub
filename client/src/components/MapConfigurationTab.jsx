@@ -30,6 +30,117 @@ const defaultFormState = {
   },
 };
 
+// ── Validation helpers ──────────────────────────────────────────────────────
+
+const UUID_REGEX =
+  /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
+const MAC_HEX_ONLY = /^[0-9A-Fa-f]{12}$/;
+
+function validateUUID(uuid) {
+  if (!uuid || uuid.trim() === "") return "UUID is required";
+  if (!UUID_REGEX.test(uuid.trim()))
+    return "UUID must be in format XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX (hex characters)";
+  return "";
+}
+
+function validateMajor(value) {
+  const num = Number(value);
+  if (isNaN(num)) return "Major must be a number";
+  if (!Number.isInteger(num)) return "Major must be a whole number";
+  if (num < 0 || num > 65535) return "Major must be 0–65535";
+  return "";
+}
+
+function validateMinor(value) {
+  const num = Number(value);
+  if (isNaN(num)) return "Minor must be a number";
+  if (!Number.isInteger(num)) return "Minor must be a whole number";
+  if (num < 0 || num > 65535) return "Minor must be 0–65535";
+  return "";
+}
+
+function validateTXPower(value) {
+  if (value === null || value === undefined || value === "")
+    return "TX Power is required";
+  const num = Number(value);
+  if (isNaN(num)) return "TX Power must be a number";
+  if (num < -100 || num > 20) return "TX Power must be between –100 and 20";
+  return "";
+}
+
+/**
+ * Normalize user-entered MAC to canonical form: uppercase, no separators, 12 hex chars.
+ * Returns { normalized, error } where error is a user-facing string or empty.
+ */
+function normalizeMAC(raw) {
+  if (!raw || raw.trim() === "") return { normalized: "", error: "" };
+  const stripped = raw.replace(/[:\-]/g, "").toUpperCase();
+  if (!MAC_HEX_ONLY.test(stripped))
+    return {
+      normalized: stripped,
+      error:
+        "MAC must contain exactly 12 hexadecimal characters (e.g. C3:00:00:3E:7D:E0)",
+    };
+  return { normalized: stripped, error: "" };
+}
+
+/**
+ * Validate a complete beacon form.
+ * @param {object} beacon - the form values
+ * @param {Array} existingBeacons - current beacon list
+ * @param {'add'|'edit'} mode
+ * @param {number} editIndex - index being edited (-1 for add)
+ * @returns {{ valid: boolean, errors: object }}
+ */
+function validateBeaconForm(beacon, existingBeacons, mode, editIndex) {
+  const errors = {};
+  const uuidErr = validateUUID(beacon.uuid);
+  if (uuidErr) errors.uuid = uuidErr;
+  const majorErr = validateMajor(beacon.major);
+  if (majorErr) errors.major = majorErr;
+  const minorErr = validateMinor(beacon.minor);
+  if (minorErr) errors.minor = minorErr;
+  const txErr = validateTXPower(beacon.txPower);
+  if (txErr) errors.txPower = txErr;
+
+  // MAC validation (only if user entered something)
+  if (beacon.macAddress && beacon.macAddress.trim() !== "") {
+    const { error: macErr } = normalizeMAC(beacon.macAddress);
+    if (macErr) errors.macAddress = macErr;
+  }
+
+  // Display name
+  if (!beacon.displayName || beacon.displayName.trim() === "")
+    errors.displayName = "Display name is required";
+
+  // Duplicate identity check (UUID + Major + Minor)
+  const identity = `${(beacon.uuid || "").toUpperCase()}-${beacon.major}-${beacon.minor}`;
+  const isDuplicate = existingBeacons.some((b, i) => {
+    if (mode === "edit" && i === editIndex) return false;
+    return `${(b.uuid || "").toUpperCase()}-${b.major}-${b.minor}` === identity;
+  });
+  if (isDuplicate)
+    errors.identity =
+      "A beacon with this UUID, Major, and Minor already exists.";
+
+  // Duplicate MAC check (if MAC provided)
+  if (beacon.macAddress && beacon.macAddress.trim() !== "") {
+    const { normalized } = normalizeMAC(beacon.macAddress);
+    if (normalized) {
+      const macDuplicate = existingBeacons.some((b, i) => {
+        if (mode === "edit" && i === editIndex) return false;
+        const existingNorm = normalizeMAC(b.macAddress).normalized;
+        return existingNorm && existingNorm === normalized;
+      });
+      if (macDuplicate)
+        errors.macDuplicate = "A beacon with this MAC address already exists.";
+    }
+  }
+
+  const valid = Object.keys(errors).length === 0;
+  return { valid, errors };
+}
+
 export default function MapConfigurationTab({
   onSave,
   onReload,
@@ -49,6 +160,22 @@ export default function MapConfigurationTab({
   const [importType, setImportType] = useState("json");
   const [mapDimensionErrors, setMapDimensionErrors] = useState({});
   const fileInputRef = useRef(null);
+
+  // ── Beacon modal state ──────────────────────────────────────────────────
+  const [showBeaconModal, setShowBeaconModal] = useState(false);
+  const [beaconModalMode, setBeaconModalMode] = useState("add"); // 'add' | 'edit'
+  const [editingBeaconIndex, setEditingBeaconIndex] = useState(-1);
+  const [editingBeacon, setEditingBeacon] = useState({
+    displayName: "",
+    uuid: "",
+    major: 1,
+    minor: 1,
+    macAddress: "",
+    x: 0,
+    y: 0,
+    txPower: -59,
+  });
+  const [beaconFormErrors, setBeaconFormErrors] = useState({});
 
   /**
    * Validate map dimension value
@@ -169,6 +296,130 @@ export default function MapConfigurationTab({
 
   function handlePlacementCancel() {
     setPlacementBeacon(null);
+  }
+
+  // ── Beacon modal helpers ────────────────────────────────────────────────
+
+  function openAddBeaconModal() {
+    setBeaconModalMode("add");
+    setEditingBeaconIndex(-1);
+    setEditingBeacon({
+      displayName: "",
+      uuid: "",
+      major: 1,
+      minor: 1,
+      macAddress: "",
+      x: 0,
+      y: 0,
+      txPower: -59,
+    });
+    setBeaconFormErrors({});
+    setShowBeaconModal(true);
+  }
+
+  function openEditBeaconModal(index) {
+    const beacon = safeConfig.beacons[index];
+    if (!beacon) return;
+    setBeaconModalMode("edit");
+    setEditingBeaconIndex(index);
+    setEditingBeacon({
+      displayName: beacon.displayName || "",
+      uuid: beacon.uuid || "",
+      major: beacon.major ?? 1,
+      minor: beacon.minor ?? 1,
+      macAddress: beacon.macAddress || "",
+      x: beacon.x ?? 0,
+      y: beacon.y ?? 0,
+      txPower: beacon.txPower ?? -59,
+    });
+    setBeaconFormErrors({});
+    setShowBeaconModal(true);
+  }
+
+  function closeBeaconModal() {
+    setShowBeaconModal(false);
+    setBeaconFormErrors({});
+  }
+
+  function handleBeaconFormChange(field, value) {
+    setEditingBeacon((prev) => ({ ...prev, [field]: value }));
+    // Clear field-specific error as user edits
+    setBeaconFormErrors((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function saveBeaconFromModal() {
+    // Normalize MAC before validation
+    const macInput = editingBeacon.macAddress || "";
+    const { normalized: normalizedMAC, error: macNormError } =
+      normalizeMAC(macInput);
+    const beaconToValidate = {
+      ...editingBeacon,
+      macAddress: normalizedMAC || macInput,
+    };
+
+    const { valid, errors } = validateBeaconForm(
+      beaconToValidate,
+      safeConfig.beacons,
+      beaconModalMode,
+      editingBeaconIndex,
+    );
+
+    if (macNormError) errors.macAddress = macNormError;
+
+    if (!valid) {
+      setBeaconFormErrors(errors);
+      return;
+    }
+
+    // Clamp X/Y to map bounds
+    const clampedX = Math.min(
+      Math.max(0, beaconToValidate.x),
+      safeConfig.map?.width ?? Infinity,
+    );
+    const clampedY = Math.min(
+      Math.max(0, beaconToValidate.y),
+      safeConfig.map?.height ?? Infinity,
+    );
+
+    const finalBeacon = {
+      ...beaconToValidate,
+      macAddress: normalizedMAC,
+      x: clampedX,
+      y: clampedY,
+    };
+
+    setConfig((current) => {
+      const next = { ...current, beacons: [...current.beacons] };
+      if (beaconModalMode === "edit" && editingBeaconIndex >= 0) {
+        next.beacons[editingBeaconIndex] = finalBeacon;
+      } else {
+        next.beacons.push(finalBeacon);
+      }
+      return next;
+    });
+
+    const actionLabel = beaconModalMode === "edit" ? "updated" : "created";
+    setMessage(
+      `Beacon "${finalBeacon.displayName}" ${actionLabel}. Click Save to persist.`,
+    );
+    setShowBeaconModal(false);
+  }
+
+  function deleteBeacon(index) {
+    const beacon = safeConfig.beacons[index];
+    if (!beacon) return;
+    setConfig((current) => {
+      const next = { ...current, beacons: [...current.beacons] };
+      next.beacons.splice(index, 1);
+      return next;
+    });
+    setMessage(
+      `Beacon "${beacon.displayName || `Beacon ${index + 1}`}" removed. Click Save to persist.`,
+    );
   }
 
   function validateLayoutStructure(jsonData) {
@@ -710,28 +961,78 @@ export default function MapConfigurationTab({
               className="text-sm"
               style={{ color: colorPalette.text.secondary }}
             >
-              Update beacon properties. Click "Place on Map" to position a
-              beacon visually.
+              Add, edit, or remove beacons. Use "Place on Map" to set a beacon's
+              position visually.
             </p>
+          </div>
+
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={openAddBeaconModal}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90"
+              style={{ backgroundColor: colorPalette.primary.main }}
+            >
+              + Add Beacon
+            </button>
           </div>
 
           <div className="space-y-3">
             {safeConfig.beacons.map((beacon, index) => (
               <div
                 key={`${beacon.uuid}-${index}`}
-                className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3"
+                className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4"
               >
-                <div className="mb-2 flex items-center justify-between">
-                  <strong style={{ color: colorPalette.text.primary }}>
-                    {beacon.displayName || `Beacon ${index + 1}`}
-                  </strong>
+                {/* Header */}
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-block h-3 w-3 rounded-full"
+                      style={{ backgroundColor: colorPalette.primary.main }}
+                      title={beacon.macAddress || "No MAC"}
+                    />
+                    <strong style={{ color: colorPalette.text.primary }}>
+                      {beacon.displayName || `Beacon ${index + 1}`}
+                    </strong>
+                  </div>
                   <span
-                    className="text-xs"
-                    style={{ color: colorPalette.primary.main }}
+                    className="rounded bg-slate-200 px-2 py-0.5 text-xs"
+                    style={{ color: colorPalette.text.secondary }}
                   >
                     {beacon.major}:{beacon.minor}
                   </span>
                 </div>
+
+                {/* Read-only identity fields */}
+                <div className="mb-2 grid gap-2 text-xs sm:grid-cols-2">
+                  <div>
+                    <span
+                      className="font-medium"
+                      style={{ color: colorPalette.text.secondary }}
+                    >
+                      UUID:{" "}
+                    </span>
+                    <span
+                      className="break-all"
+                      style={{ color: colorPalette.text.primary }}
+                    >
+                      {beacon.uuid || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    <span
+                      className="font-medium"
+                      style={{ color: colorPalette.text.secondary }}
+                    >
+                      MAC:{" "}
+                    </span>
+                    <span style={{ color: colorPalette.text.primary }}>
+                      {beacon.macAddress || "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Inline editable fields */}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <input
                     className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm"
@@ -771,7 +1072,9 @@ export default function MapConfigurationTab({
                     }
                   />
                 </div>
-                <div className="mt-2 flex gap-2">
+
+                {/* Action buttons */}
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => handlePlaceOnMap(beacon, index)}
@@ -782,18 +1085,358 @@ export default function MapConfigurationTab({
                       ? "Placing..."
                       : "Place on Map"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => openEditBeaconModal(index)}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                    style={{ backgroundColor: colorPalette.info.main }}
+                  >
+                    Edit Details
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteBeacon(index)}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                    style={{ backgroundColor: colorPalette.error.main }}
+                  >
+                    Delete
+                  </button>
                   {beacon.x != null && beacon.y != null && (
-                    <span className="text-xs text-slate-500 self-center">
-                      Positioned: ({Number(beacon.x).toFixed(2)},{" "}
-                      {Number(beacon.y).toFixed(2)})m
+                    <span className="text-xs text-slate-500 self-center ml-auto">
+                      Position: ({Number(beacon.x).toFixed(2)},{" "}
+                      {Number(beacon.y).toFixed(2)}) m
                     </span>
                   )}
                 </div>
               </div>
             ))}
+
+            {safeConfig.beacons.length === 0 && (
+              <div
+                className="rounded-2xl border border-dashed border-slate-300 bg-white/50 p-6 text-center"
+                style={{ color: colorPalette.text.secondary }}
+              >
+                <p className="text-sm">No beacons configured yet.</p>
+                <p className="mt-1 text-xs">
+                  Click <strong>+ Add Beacon</strong> above to create one, then
+                  place it on the map.
+                </p>
+              </div>
+            )}
           </div>
         </section>
       </div>
+
+      {/* ── Add / Edit Beacon Modal ──────────────────────────────────────── */}
+      {showBeaconModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeBeaconModal();
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+            style={{ maxHeight: "90vh", overflowY: "auto" }}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3
+                className="text-lg font-semibold"
+                style={{ color: colorPalette.text.primary }}
+              >
+                {beaconModalMode === "add" ? "Add New Beacon" : "Edit Beacon"}
+              </h3>
+              <button
+                type="button"
+                onClick={closeBeaconModal}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {beaconFormErrors.identity && (
+              <div
+                className="mb-3 rounded-lg border px-3 py-2 text-sm"
+                style={{
+                  borderColor: colorPalette.error.light,
+                  backgroundColor: `${colorPalette.error.main}10`,
+                  color: colorPalette.error.dark,
+                }}
+              >
+                {beaconFormErrors.identity}
+              </div>
+            )}
+            {beaconFormErrors.macDuplicate && (
+              <div
+                className="mb-3 rounded-lg border px-3 py-2 text-sm"
+                style={{
+                  borderColor: colorPalette.error.light,
+                  backgroundColor: `${colorPalette.error.main}10`,
+                  color: colorPalette.error.dark,
+                }}
+              >
+                {beaconFormErrors.macDuplicate}
+              </div>
+            )}
+
+            <div className="grid gap-3">
+              {/* Display Name */}
+              <label className="text-sm">
+                <span
+                  className="mb-1 block font-medium"
+                  style={{ color: colorPalette.text.secondary }}
+                >
+                  Display Name *
+                </span>
+                <input
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors ${
+                    beaconFormErrors.displayName
+                      ? "border-red-400 bg-red-50/50"
+                      : "border-slate-200"
+                  }`}
+                  value={editingBeacon.displayName}
+                  placeholder="e.g. Beacon A"
+                  onChange={(e) =>
+                    handleBeaconFormChange("displayName", e.target.value)
+                  }
+                />
+                {beaconFormErrors.displayName && (
+                  <p
+                    className="mt-1 text-xs"
+                    style={{ color: colorPalette.error.main }}
+                  >
+                    {beaconFormErrors.displayName}
+                  </p>
+                )}
+              </label>
+
+              {/* UUID */}
+              <label className="text-sm">
+                <span
+                  className="mb-1 block font-medium"
+                  style={{ color: colorPalette.text.secondary }}
+                >
+                  UUID *
+                </span>
+                <input
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm font-mono outline-none transition-colors ${
+                    beaconFormErrors.uuid
+                      ? "border-red-400 bg-red-50/50"
+                      : "border-slate-200"
+                  }`}
+                  value={editingBeacon.uuid}
+                  placeholder="E2C56DB5-DFFB-48D2-B060-D0F5A71096E0"
+                  onChange={(e) =>
+                    handleBeaconFormChange("uuid", e.target.value.trim())
+                  }
+                />
+                {beaconFormErrors.uuid && (
+                  <p
+                    className="mt-1 text-xs"
+                    style={{ color: colorPalette.error.main }}
+                  >
+                    {beaconFormErrors.uuid}
+                  </p>
+                )}
+              </label>
+
+              {/* Major + Minor row */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">
+                  <span
+                    className="mb-1 block font-medium"
+                    style={{ color: colorPalette.text.secondary }}
+                  >
+                    Major * <span className="font-normal">(0–65535)</span>
+                  </span>
+                  <input
+                    className={`w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors ${
+                      beaconFormErrors.major
+                        ? "border-red-400 bg-red-50/50"
+                        : "border-slate-200"
+                    }`}
+                    type="number"
+                    min="0"
+                    max="65535"
+                    value={editingBeacon.major}
+                    onChange={(e) =>
+                      handleBeaconFormChange("major", Number(e.target.value))
+                    }
+                  />
+                  {beaconFormErrors.major && (
+                    <p
+                      className="mt-1 text-xs"
+                      style={{ color: colorPalette.error.main }}
+                    >
+                      {beaconFormErrors.major}
+                    </p>
+                  )}
+                </label>
+                <label className="text-sm">
+                  <span
+                    className="mb-1 block font-medium"
+                    style={{ color: colorPalette.text.secondary }}
+                  >
+                    Minor * <span className="font-normal">(0–65535)</span>
+                  </span>
+                  <input
+                    className={`w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors ${
+                      beaconFormErrors.minor
+                        ? "border-red-400 bg-red-50/50"
+                        : "border-slate-200"
+                    }`}
+                    type="number"
+                    min="0"
+                    max="65535"
+                    value={editingBeacon.minor}
+                    onChange={(e) =>
+                      handleBeaconFormChange("minor", Number(e.target.value))
+                    }
+                  />
+                  {beaconFormErrors.minor && (
+                    <p
+                      className="mt-1 text-xs"
+                      style={{ color: colorPalette.error.main }}
+                    >
+                      {beaconFormErrors.minor}
+                    </p>
+                  )}
+                </label>
+              </div>
+
+              {/* MAC Address */}
+              <label className="text-sm">
+                <span
+                  className="mb-1 block font-medium"
+                  style={{ color: colorPalette.text.secondary }}
+                >
+                  MAC Address
+                </span>
+                <input
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm font-mono outline-none transition-colors ${
+                    beaconFormErrors.macAddress
+                      ? "border-red-400 bg-red-50/50"
+                      : "border-slate-200"
+                  }`}
+                  value={editingBeacon.macAddress}
+                  placeholder="c3:00:00:3e:7d:e0"
+                  onChange={(e) =>
+                    handleBeaconFormChange("macAddress", e.target.value)
+                  }
+                />
+                <p
+                  className="mt-1 text-xs"
+                  style={{ color: colorPalette.text.disabled }}
+                >
+                  Colons and dashes are removed automatically. Stored as
+                  uppercase (e.g. C300003E7DE0).
+                </p>
+                {beaconFormErrors.macAddress && (
+                  <p
+                    className="mt-1 text-xs"
+                    style={{ color: colorPalette.error.main }}
+                  >
+                    {beaconFormErrors.macAddress}
+                  </p>
+                )}
+              </label>
+
+              {/* X + Y row */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">
+                  <span
+                    className="mb-1 block font-medium"
+                    style={{ color: colorPalette.text.secondary }}
+                  >
+                    X position (m)
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingBeacon.x}
+                    onChange={(e) =>
+                      handleBeaconFormChange("x", Number(e.target.value))
+                    }
+                  />
+                </label>
+                <label className="text-sm">
+                  <span
+                    className="mb-1 block font-medium"
+                    style={{ color: colorPalette.text.secondary }}
+                  >
+                    Y position (m)
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editingBeacon.y}
+                    onChange={(e) =>
+                      handleBeaconFormChange("y", Number(e.target.value))
+                    }
+                  />
+                </label>
+              </div>
+
+              {/* TX Power */}
+              <label className="text-sm">
+                <span
+                  className="mb-1 block font-medium"
+                  style={{ color: colorPalette.text.secondary }}
+                >
+                  TX Power (RSSI at 1 m) *
+                </span>
+                <input
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors ${
+                    beaconFormErrors.txPower
+                      ? "border-red-400 bg-red-50/50"
+                      : "border-slate-200"
+                  }`}
+                  type="number"
+                  value={editingBeacon.txPower}
+                  placeholder="-59"
+                  onChange={(e) =>
+                    handleBeaconFormChange("txPower", Number(e.target.value))
+                  }
+                />
+                {beaconFormErrors.txPower && (
+                  <p
+                    className="mt-1 text-xs"
+                    style={{ color: colorPalette.error.main }}
+                  >
+                    {beaconFormErrors.txPower}
+                  </p>
+                )}
+              </label>
+            </div>
+
+            {/* Modal actions */}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeBeaconModal}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveBeaconFromModal}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90"
+                style={{ backgroundColor: colorPalette.primary.main }}
+              >
+                {beaconModalMode === "add" ? "Create Beacon" : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,9 +1,12 @@
 {
   "mqtt": {
-    "brokerHost": "127.0.0.1",
+    "brokerHost": "lwns.adarko.io",
     "brokerPort": 1883,
-    "applicationID": "",
-    "topicPattern": "",
+    "username": "8d765299-6bd2-4a9c-a841-7406785ff516",
+    "password": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjaGlycHN0YWNrIiwiaXNzIjoiY2hpcnBzdGFjayIsInN1YiI6IjZhMWU2ZTBlLTU1ODgtNDE2OC1iZDc0LThmYTQ3ZDhmZjYwZCIsInR5cCI6ImtleSJ9.RBFQPR2FyUjUBqpRiLOSM5BywX9ipMQNTLdKEcyGb5Y",
+    "applicationID": "8d765299-6bd2-4a9c-a841-7406785ff516",
+    "topicPattern": "application/8d765299-6bd2-4a9c-a841-7406785ff516/device/+/event/up",
+    "clientID": "trackerhub-8d765299-6bd2-4a9c-a841-7406785ff516",
     "enabled": false
   },
   "server": {

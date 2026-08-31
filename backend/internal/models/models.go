@@ -1,5 +1,34 @@
 package models
 
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// macHexRegex validates that a string contains exactly 12 hexadecimal characters.
+var macHexRegex = regexp.MustCompile(`^[0-9A-Fa-f]{12}$`)
+
+// NormalizeMAC normalizes a MAC address to the canonical TrackerHub format:
+// uppercase, no colons or dashes, exactly 12 hex characters.
+// Returns the normalized MAC and an error if the input is invalid.
+// An empty input returns an empty string with no error (MAC is optional).
+func NormalizeMAC(mac string) (string, error) {
+	if mac == "" {
+		return "", nil
+	}
+
+	// Remove common separators
+	normalized := strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(mac, ":", ""), "-", ""))
+
+	// Validate exactly 12 hex characters
+	if !macHexRegex.MatchString(normalized) {
+		return "", fmt.Errorf("invalid MAC address %q: must contain exactly 12 hexadecimal characters", mac)
+	}
+
+	return normalized, nil
+}
+
 // KalmanFilterState stores per-tracker Kalman filter state and config snapshot
 // for detecting configuration changes.
 type KalmanFilterState struct {
