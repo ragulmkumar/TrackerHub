@@ -4,6 +4,7 @@ import ServerRuntimeCard from "./ServerRuntimeCard";
 import AreaLocationConfigCard from "./AreaLocationConfigCard";
 import WebhookConfigCard from "./WebhookConfigCard";
 import TrackerAccessControlCard from "./TrackerAccessControlCard";
+import TrackerRegistryCard from "./TrackerRegistryCard";
 import SenseCapConfigCard from "./SenseCapConfigCard";
 import ChirpStackConfigCard from "./ChirpStackConfigCard";
 import colorPalette from "../themes/colorPalette";
@@ -24,6 +25,11 @@ export default function AppConfigurationTab() {
       component: <AreaLocationConfigCard />,
     },
     { id: "webhook", label: "Webhook", component: <WebhookConfigCard /> },
+    {
+      id: "tracker-registry",
+      label: "Tracker Registry",
+      component: <TrackerRegistryCard />,
+    },
     {
       id: "tracker",
       label: "Tracker Access",

@@ -50,6 +50,7 @@ func (cm *ConfigManager) LoadServerRuntimeConfig(filePath string) (*models.Serve
 				AllowAll:        true,
 				AllowedTrackers: []string{},
 			},
+			TrackerRegistry: []models.TrackerRegistryEntry{},
 		}
 		if err := cm.SaveServerRuntimeConfig(filePath, defaultConfig); err != nil {
 			return nil, err

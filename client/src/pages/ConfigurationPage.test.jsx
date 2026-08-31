@@ -880,6 +880,9 @@ describe("ConfigurationPage - App Configuration Tab", () => {
         screen.getByRole("button", { name: "Webhook" }),
       ).toBeInTheDocument();
       expect(
+        screen.getByRole("button", { name: "Tracker Registry" }),
+      ).toBeInTheDocument();
+      expect(
         screen.getByRole("button", { name: "Tracker Access" }),
       ).toBeInTheDocument();
       expect(

@@ -146,6 +146,7 @@ type ServerRuntimeConfig struct {
 	AllowAreaLocation    bool                       `json:"allowAreaLocation,omitempty"`
 	Webhook              WebhookConfig              `json:"webhook"`
 	TrackerAccessControl TrackerAccessControlConfig `json:"trackerAccessControl,omitempty"`
+	TrackerRegistry      []TrackerRegistryEntry     `json:"trackerRegistry,omitempty"`
 }
 
 // MQTTServerConfig holds MQTT connection settings
@@ -178,6 +179,18 @@ type TrackerAccessControlConfig struct {
 	Enabled         bool     `json:"enabled"`
 	AllowAll        bool     `json:"allowAll,omitempty"`
 	AllowedTrackers []string `json:"allowedTrackers,omitempty"`
+}
+
+// TrackerRegistryEntry represents a pre-registered tracker with user-editable metadata.
+// The reference project has no tracker registry (trackers auto-discover via MQTT);
+// this is a TrackerHub extension that lets users add a display name and manage
+// trackers as first-class entities before they appear on the live map.
+type TrackerRegistryEntry struct {
+	ID          string `json:"id"`                    // Tracker EUI (hex, 8-16 chars) — primary key
+	Name        string `json:"name"`                  // User-assigned display name
+	Description string `json:"description,omitempty"` // Optional description / notes
+	CreatedAt   int64  `json:"createdAt"`             // Unix-ms timestamp of creation
+	UpdatedAt   int64  `json:"updatedAt"`             // Unix-ms timestamp of last edit
 }
 
 // WebhookConfig stores optional outbound webhook settings.

@@ -76,6 +76,12 @@ func cloneServerRuntimeConfig(config *models.ServerRuntimeConfig) *models.Server
 		clone.TrackerAccessControl.AllowedTrackers = cloneTrackers
 	}
 
+	if config.TrackerRegistry != nil {
+		cloneRegistry := make([]models.TrackerRegistryEntry, len(config.TrackerRegistry))
+		copy(cloneRegistry, config.TrackerRegistry)
+		clone.TrackerRegistry = cloneRegistry
+	}
+
 	return &clone
 }
 
