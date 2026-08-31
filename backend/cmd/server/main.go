@@ -47,6 +47,10 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
+// kalmanStore holds per-tracker Kalman filter state.
+// Each tracker gets an independent filter initialized on first measurement.
+var kalmanStore = models.NewKalmanStateStore()
+
 func main() {
 	// Create config manager
 	configManager := config.NewConfigManager()
@@ -126,14 +130,40 @@ func main() {
 		}
 
 		timestamp := time.Now().UnixMilli()
-		trackerCoords := []float64{posResult.Position[0], posResult.Position[1]}
+
+		// ── Kalman filtering ──────────────────────────────────────────────
+		// Apply a 2-D constant-velocity Kalman filter per tracker.
+		// Uses processVariance / measurementVariance from the runtime config.
+		// Config changes (variance values) trigger filter reinitialization.
+		runtimeCfg := runtimeConfigStore.Get()
+		kalmanPV := 1.0
+		kalmanMV := 10.0
+		if runtimeCfg != nil {
+			kalmanPV = runtimeCfg.Kalman.ProcessVariance
+			kalmanMV = runtimeCfg.Kalman.MeasurementVariance
+		}
+
+		filtered := kalmanStore.Apply(
+			report.TrackerID,
+			posResult.Position,
+			timestamp,
+			kalmanPV,
+			kalmanMV,
+		)
+
+		// The helper guarantees a non-nil result when posResult.Position is non-nil.
+		filteredX := filtered[0]
+		filteredY := filtered[1]
+		// ── end Kalman filtering ──────────────────────────────────────────
+
+		trackerCoords := []float64{filteredX, filteredY}
 		accuracy := posResult.Accuracy
 		apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, &accuracy)
 
 		trackerData := map[string]interface{}{
 			"trackerId":             report.TrackerID,
 			"timestamp":             timestamp,
-			"position":              map[string]float64{"x": posResult.Position[0], "y": posResult.Position[1]},
+			"position":              map[string]float64{"x": filteredX, "y": filteredY},
 			"accuracy":              posResult.Accuracy,
 			"confidence":            posResult.Confidence,
 			"method":                posResult.Method,

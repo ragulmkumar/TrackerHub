@@ -7,26 +7,11 @@
       {
         "type": "polyline",
         "points": [
-          [
-            0,
-            0
-          ],
-          [
-            9,
-            0
-          ],
-          [
-            9,
-            5
-          ],
-          [
-            0,
-            5
-          ],
-          [
-            0,
-            0
-          ]
+          [0, 0],
+          [9, 0],
+          [9, 5],
+          [0, 5],
+          [0, 0]
         ],
         "closed": true,
         "strokeColor": "#333333",
@@ -37,49 +22,8 @@
     "backgroundImageWidth": 1672,
     "backgroundImageHeight": 941
   },
-  "beacons": [
-    {
-      "uuid": "74278BDA-B644-4520-8F0C-720EAF059939",
-      "major": 10001,
-      "minor": 19641,
-      "x": 14.108695652173912,
-      "y": 15.782608695652174,
-      "txPower": -30,
-      "displayName": "MBeaco5",
-      "macAddress": "C300003E7DEF"
-    },
-    {
-      "uuid": "74278BDA-B644-4520-8F0C-720EAF059938",
-      "major": 10001,
-      "minor": 19641,
-      "x": 22.065217391304348,
-      "y": 13.26086956521739,
-      "txPower": -59,
-      "displayName": "MBeaco4",
-      "macAddress": "C300003E7DDA"
-    },
-    {
-      "uuid": "74278BDA-B644-4520-8F0C-720EAF059937",
-      "major": 10001,
-      "minor": 19641,
-      "x": 11.021739130434783,
-      "y": 4.260869565217392,
-      "txPower": -59,
-      "displayName": "MBeaco3",
-      "macAddress": "C300003E7DE0"
-    },
-    {
-      "uuid": "74278BDA-B644-4520-8F0C-720EAF059935",
-      "major": 10001,
-      "minor": 19641,
-      "x": 2.6739130434782608,
-      "y": 14.826086956521738,
-      "txPower": -59,
-      "displayName": "MBeaco1",
-      "macAddress": "C300003E7DFB"
-    }
-  ],
+  "beacons": null,
   "settings": {
-    "signalPropagationFactor": 2.5
+    "signalPropagationFactor": 0
   }
 }

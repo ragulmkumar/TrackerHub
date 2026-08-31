@@ -1,5 +1,14 @@
 package models
 
+// KalmanFilterState stores per-tracker Kalman filter state and config snapshot
+// for detecting configuration changes.
+type KalmanFilterState struct {
+	Filter              *KalmanFilter2D
+	LastTimestamp       int64
+	ProcessVariance     float64
+	MeasurementVariance float64
+}
+
 // DetectedBeacon represents a BLE beacon detected by a tracker
 type DetectedBeacon struct {
 	MACAddress string `json:"macAddress" validate:"required,len=12"`

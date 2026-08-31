@@ -309,3 +309,77 @@ func (kf *KalmanFilter2D) GetPosition() [2]float64 {
 func (kf *KalmanFilter2D) GetVelocity() [2]float64 {
 	return [2]float64{kf.State[2], kf.State[3]}
 }
+
+// KalmanStateStore manages per-tracker Kalman filters, ensuring each tracker
+// has its own independent filter state and that configuration changes trigger
+// a safe reinitialization. It is safe for concurrent use by a single goroutine
+// (the MQTT message handler). Methods do not block and rely on the caller to
+// serialize access.
+type KalmanStateStore struct {
+	filters map[string]*KalmanFilterState
+}
+
+// NewKalmanStateStore creates an empty per-tracker Kalman store.
+func NewKalmanStateStore() *KalmanStateStore {
+	return &KalmanStateStore{filters: make(map[string]*KalmanFilterState)}
+}
+
+// Apply runs the Kalman update for a single tracker given a raw measurement and
+// returns the filtered position. It returns the raw measurement unchanged when:
+//   - the measurement is empty/nil
+//   - process or measurement variance is invalid (<= 0)
+//   - the filter update fails (singular matrix / degenerate state)
+//
+// The first measurement for a tracker initializes its filter with the raw
+// position (no smoothing yet). Subsequent measurements are smoothed.
+func (s *KalmanStateStore) Apply(trackerID string, raw *[2]float64, timestamp int64, processVariance, measurementVariance float64) *[2]float64 {
+	if raw == nil {
+		return nil
+	}
+	if processVariance <= 0 || measurementVariance <= 0 {
+		// Invalid Kalman parameters — fall back to raw position
+		return raw
+	}
+
+	kfState, exists := s.filters[trackerID]
+
+	// Reinitialize when Kalman configuration changes
+	if exists && (kfState.ProcessVariance != processVariance || kfState.MeasurementVariance != measurementVariance) {
+		exists = false
+		delete(s.filters, trackerID)
+	}
+
+	if !exists {
+		// First measurement — initialize filter with raw position
+		kf := NewKalmanFilter2D(*raw, processVariance, measurementVariance)
+		kf.Update(*raw)
+		s.filters[trackerID] = &KalmanFilterState{
+			Filter:              kf,
+			LastTimestamp:       timestamp,
+			ProcessVariance:     processVariance,
+			MeasurementVariance: measurementVariance,
+		}
+		// First measurement returns the raw position (no smoothing history)
+		return raw
+	}
+
+	// Subsequent measurement — predict, then update
+	dtSec := float64(timestamp-kfState.LastTimestamp) / 1000.0
+	if dtSec < 0.01 {
+		dtSec = 0.01 // clamp tiny/negative deltas
+	}
+	if dtSec > 300 {
+		dtSec = 300 // cap stale-tracker prediction
+	}
+
+	kfState.Filter.Predict(dtSec)
+	updated := kfState.Filter.Update(*raw)
+	kfState.LastTimestamp = timestamp
+	if !updated {
+		// Filter update failed (singular matrix etc.) — fall back to raw
+		return raw
+	}
+
+	filtered := kfState.Filter.GetPosition()
+	return &filtered
+}
