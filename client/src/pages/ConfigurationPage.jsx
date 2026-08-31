@@ -83,7 +83,7 @@ export default function ConfigurationPage() {
     };
   }, []);
 
-  const beaconCount = useMemo(() => config.beacons.length, [config.beacons]);
+  const beaconCount = useMemo(() => config.beacons?.length || 0, [config.beacons]);
 
   async function handleSave() {
     try {

@@ -26,6 +26,7 @@ export default function MapEditor({
 }) {
   const canvasRef = useRef(null);
   const wrapperRef = useRef(null);
+  const backgroundImageRef = useRef(null);
   const [canvasSize, setCanvasSize] = useState({
     width: canvasWidth,
     height: canvasHeight,
@@ -43,6 +44,28 @@ export default function MapEditor({
     pendingPosition: null, // [x, y] in meters after first click
     previewPosition: null, // [x, y] in meters for mouse hover
   });
+  const [bgImageLoaded, setBgImageLoaded] = useState(false);
+
+  // Load background image when it changes
+  useEffect(() => {
+    const bgImageUrl = mapConfig?.map?.backgroundImage;
+    if (bgImageUrl) {
+      setBgImageLoaded(false);
+      const img = new Image();
+      img.onload = () => {
+        backgroundImageRef.current = img;
+        setBgImageLoaded(true);
+      };
+      img.onerror = () => {
+        backgroundImageRef.current = null;
+        setBgImageLoaded(false);
+      };
+      img.src = bgImageUrl;
+    } else {
+      backgroundImageRef.current = null;
+      setBgImageLoaded(true);
+    }
+  }, [mapConfig?.map?.backgroundImage]);
 
   // Handle resize
   useEffect(() => {
@@ -302,11 +325,14 @@ export default function MapEditor({
     ctx.clearRect(0, 0, width, height);
 
     // Draw map base (background, grid, entities)
+    // Use the loaded image from ref for better rendering
     drawMapBase(ctx, {
       mapConfig,
       canvasWidth: width,
       canvasHeight: height,
       coords,
+      backgroundImage:
+        backgroundImageRef.current || mapConfig?.map?.backgroundImage || null,
     });
 
     // Draw beacons
@@ -415,6 +441,8 @@ export default function MapEditor({
     dragState,
     toCanvas,
     offsetY,
+    bgImageLoaded,
+    backgroundImageRef.current,
   ]);
 
   // Attach event listeners

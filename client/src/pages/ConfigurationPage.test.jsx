@@ -37,6 +37,10 @@ vi.mock("../themes/colorPalette", () => ({
   },
 }));
 
+// Valid tiny 1x1 pixel transparent PNG data URL for testing
+const TINY_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 const mockConfig = {
   map: { name: "Main Floor", width: 30, height: 20, entities: [] },
   beacons: [
@@ -312,7 +316,7 @@ describe("ConfigurationPage - Map Configuration Tab", () => {
     expect(screen.getByDisplayValue("2.5")).toBeInTheDocument(); // Signal propagation factor
   });
 
-  it("shows Import Layout button", async () => {
+  it("shows Import Floor Layout button", async () => {
     renderMapTab();
     await waitFor(() => {
       expect(
@@ -320,7 +324,7 @@ describe("ConfigurationPage - Map Configuration Tab", () => {
       ).not.toBeInTheDocument();
     });
 
-    expect(screen.getByText("Import Layout")).toBeInTheDocument();
+    expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
   });
 
   it("shows beacon count badge", async () => {
@@ -374,7 +378,7 @@ describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
 
   const renderMapTab = () => renderPage();
 
-  it("shows file input when Import Layout is clicked", async () => {
+  it("shows file input when Import Floor Layout is clicked", async () => {
     renderMapTab();
     await waitFor(() => {
       expect(
@@ -382,7 +386,7 @@ describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
       ).not.toBeInTheDocument();
     });
 
-    const importButton = screen.getByText("Import Layout");
+    const importButton = screen.getByText("Import Floor Layout");
     fireEvent.click(importButton);
 
     const fileInput = document.querySelector(
@@ -399,8 +403,32 @@ describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
       ).not.toBeInTheDocument();
     });
 
-    // Create a valid JSON file
-    const jsonContent = JSON.stringify(mockLayoutWithEntities);
+    // Create a valid JSON file with only map data (beacons managed separately)
+    const layoutWithoutBeacons = {
+      map: {
+        name: "Factory Floor",
+        width: 50,
+        height: 40,
+        entities: [
+          {
+            type: "polyline",
+            points: [
+              [0, 0],
+              [50, 0],
+              [50, 40],
+              [0, 40],
+              [0, 0],
+            ],
+            closed: true,
+            strokeColor: "#94a3b8",
+            fillColor: "rgba(148, 163, 184, 0.1)",
+            lineWidth: 2,
+          },
+        ],
+      },
+      // No beacons - they are managed separately in TrackerHub
+    };
+    const jsonContent = JSON.stringify(layoutWithoutBeacons);
     const file = new File([jsonContent], "layout.json", {
       type: "application/json",
     });
@@ -415,26 +443,28 @@ describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Layout imported successfully. Review and save configuration.",
+          "Floor layout imported successfully. Map dimensions and wall/boundary entities loaded. Add and place beacons separately using the beacon list.",
         ),
       ).toBeInTheDocument();
     });
 
-    // Verify config was updated
+    // Verify config was updated - map data changed, but existing beacons preserved
     await waitFor(() => {
       expect(screen.getByDisplayValue("Factory Floor")).toBeInTheDocument();
       expect(screen.getByDisplayValue("50")).toBeInTheDocument(); // width
       expect(screen.getByDisplayValue("40")).toBeInTheDocument(); // height
-      expect(screen.getByDisplayValue("2")).toBeInTheDocument(); // signalPropagationFactor
-      // Use getAllByText since "2 beacons" appears in multiple places
-      expect(screen.getAllByText("2 beacons").length).toBeGreaterThan(0);
+      // Signal propagation factor preserved from original config (2.5)
+      expect(screen.getByDisplayValue("2.5")).toBeInTheDocument();
+      // Original beacon count (1) preserved since no beacons in import file
+      const badges = screen.getAllByText("1 beacon");
+      expect(badges.length).toBeGreaterThan(0);
     });
   });
 
   it("rejects invalid JSON file", async () => {
     renderMapTab();
     await waitFor(() => {
-      expect(screen.getByText("Import Layout")).toBeInTheDocument();
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
     });
 
     const invalidJson = JSON.stringify({
@@ -451,14 +481,18 @@ describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(screen.getByText(/Invalid layout format/)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Invalid floor layout. Expected a map object with width, height, and optional polyline/wall entities. Beacons and settings are managed separately in TrackerHub.",
+        ),
+      ).toBeInTheDocument();
     });
   });
 
   it("rejects malformed JSON file", async () => {
     renderMapTab();
     await waitFor(() => {
-      expect(screen.getByText("Import Layout")).toBeInTheDocument();
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
     });
 
     const file = new File(["{ invalid json }"], "malformed.json", {
@@ -470,7 +504,9 @@ describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(screen.getByText(/Failed to parse JSON file/)).toBeInTheDocument();
+      expect(
+        screen.getByText("The selected file is not valid JSON."),
+      ).toBeInTheDocument();
     });
   });
 
@@ -490,7 +526,7 @@ describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
 
     renderMapTab();
     await waitFor(() => {
-      expect(screen.getByText("Import Layout")).toBeInTheDocument();
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
     });
 
     const fileInput = document.querySelector(
@@ -500,6 +536,207 @@ describe("ConfigurationPage - Map Configuration Tab - Layout Import", () => {
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("2.5")).toBeInTheDocument(); // Original signalPropagationFactor preserved
+    });
+  });
+
+  it("rejects layout with missing map object", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
+    });
+
+    const invalidLayout = {
+      beacons: [],
+      settings: { signalPropagationFactor: 2.5 },
+    };
+    const file = new File([JSON.stringify(invalidLayout)], "invalid.json", {
+      type: "application/json",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Invalid floor layout. Expected a map object with width, height, and optional polyline/wall entities. Beacons and settings are managed separately in TrackerHub.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("rejects layout with missing map width", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
+    });
+
+    const invalidLayout = {
+      map: { height: 10, entities: [] },
+      beacons: [],
+      settings: { signalPropagationFactor: 2.5 },
+    };
+    const file = new File([JSON.stringify(invalidLayout)], "invalid.json", {
+      type: "application/json",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Invalid floor layout. Expected a map object with width, height, and optional polyline/wall entities. Beacons and settings are managed separately in TrackerHub.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("rejects layout with missing map height", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
+    });
+
+    const invalidLayout = {
+      map: { width: 10, entities: [] },
+      beacons: [],
+      settings: { signalPropagationFactor: 2.5 },
+    };
+    const file = new File([JSON.stringify(invalidLayout)], "invalid.json", {
+      type: "application/json",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Invalid floor layout. Expected a map object with width, height, and optional polyline/wall entities. Beacons and settings are managed separately in TrackerHub.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("rejects layout with invalid entity type", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
+    });
+
+    const invalidLayout = {
+      map: {
+        width: 10,
+        height: 10,
+        entities: [
+          {
+            type: "circle",
+            points: [
+              [0, 0],
+              [5, 5],
+            ],
+          },
+        ],
+      },
+      beacons: [],
+      settings: { signalPropagationFactor: 2.5 },
+    };
+    const file = new File([JSON.stringify(invalidLayout)], "invalid.json", {
+      type: "application/json",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Invalid floor layout. Expected a map object with width, height, and optional polyline/wall entities. Beacons and settings are managed separately in TrackerHub.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("rejects layout with invalid entity points (too few)", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
+    });
+
+    const invalidLayout = {
+      map: {
+        width: 10,
+        height: 10,
+        entities: [{ type: "polyline", points: [[0, 0]] }],
+      },
+      beacons: [],
+      settings: { signalPropagationFactor: 2.5 },
+    };
+    const file = new File([JSON.stringify(invalidLayout)], "invalid.json", {
+      type: "application/json",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Invalid floor layout. Expected a map object with width, height, and optional polyline/wall entities. Beacons and settings are managed separately in TrackerHub.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("rejects layout with non-numeric entity points", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(screen.getByText("Import Floor Layout")).toBeInTheDocument();
+    });
+
+    const invalidLayout = {
+      map: {
+        width: 10,
+        height: 10,
+        entities: [
+          {
+            type: "polyline",
+            points: [
+              [0, "invalid"],
+              [5, 5],
+            ],
+          },
+        ],
+      },
+      beacons: [],
+      settings: { signalPropagationFactor: 2.5 },
+    };
+    const file = new File([JSON.stringify(invalidLayout)], "invalid.json", {
+      type: "application/json",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Invalid floor layout. Expected a map object with width, height, and optional polyline/wall entities. Beacons and settings are managed separately in TrackerHub.",
+        ),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -1026,6 +1263,454 @@ describe("ConfigurationPage - MapEditor Integration", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Map Configuration" }));
     await waitFor(() => {
       expect(document.querySelector("canvas")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("ConfigurationPage - Layout Import - Image and Reference Format", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    loadWebConfiguration.mockResolvedValue(mockConfig);
+    saveWebConfiguration.mockResolvedValue({
+      message: "Configuration saved successfully.",
+    });
+  });
+
+  const renderMapTab = () => renderPage();
+
+  it("shows file input for image when Image (JPG/PNG) is selected", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    // Select image import type
+    const select =
+      screen.getByRole("combobox") || document.querySelector("select");
+    fireEvent.change(select, { target: { value: "image" } });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".jpg,.jpeg,.png"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+  });
+
+  it("imports JPG floor-plan image and shows success message", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    // Select image import type
+    const select =
+      screen.getByRole("combobox") || document.querySelector("select");
+    fireEvent.change(select, { target: { value: "image" } });
+
+    // Create a mock image file
+    const file = new File(["mock-image-data"], "floorplan.jpg", {
+      type: "image/jpeg",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".jpg,.jpeg,.png"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Floor-plan image imported successfully. Adjust map dimensions to match the floor-plan scale, then add wall/boundary entities and place beacons.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("imports PNG floor-plan image and shows success message", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    // Select image import type
+    const select =
+      screen.getByRole("combobox") || document.querySelector("select");
+    fireEvent.change(select, { target: { value: "image" } });
+
+    // Create a mock PNG file
+    const file = new File(["mock-image-data"], "floorplan.png", {
+      type: "image/png",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".jpg,.jpeg,.png"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Floor-plan image imported successfully. Adjust map dimensions to match the floor-plan scale, then add wall/boundary entities and place beacons.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("rejects unsupported file format", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    // Default is JSON - try to import a text file
+    const file = new File(["test"], "test.txt", {
+      type: "text/plain",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Unsupported file format. Please upload a JSON layout file or JPG/PNG floor-plan image.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("imports layout with empty beacon object (reference format)", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    // Reference format uses empty object for beacons
+    const layoutWithEmptyBeaconObject = {
+      map: {
+        name: "Reference Floor",
+        width: 30,
+        height: 20,
+        entities: [
+          {
+            type: "wall",
+            points: [
+              [0, 0],
+              [30, 0],
+              [30, 20],
+              [0, 20],
+              [0, 0],
+            ],
+            closed: true,
+          },
+        ],
+      },
+      beacons: {}, // Empty object - reference format
+    };
+    const jsonContent = JSON.stringify(layoutWithEmptyBeaconObject);
+    const file = new File([jsonContent], "reference.json", {
+      type: "application/json",
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Floor layout imported successfully. Map dimensions and wall/boundary entities loaded. Add and place beacons separately using the beacon list.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    // Verify existing beacons preserved (since beacons was empty object)
+    await waitFor(() => {
+      const badges = screen.getAllByText("1 beacon");
+      expect(badges.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("imports layout with wall entities (reference format)", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const layoutWithWalls = {
+      map: {
+        name: "Wall Floor",
+        width: 25,
+        height: 15,
+        entities: [
+          {
+            type: "wall",
+            points: [
+              [0, 0],
+              [25, 0],
+              [25, 15],
+              [0, 15],
+              [0, 0],
+            ],
+            closed: true,
+            strokeColor: "#94a3b8",
+            fillColor: "rgba(148, 163, 184, 0.1)",
+            lineWidth: 2,
+          },
+        ],
+      },
+      beacons: [],
+    };
+    const jsonContent = JSON.stringify(layoutWithWalls);
+    const file = new File([jsonContent], "walls.json", {
+      type: "application/json",
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".json"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Floor layout imported successfully. Map dimensions and wall/boundary entities loaded. Add and place beacons separately using the beacon list.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    // Verify map name updated
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Wall Floor")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("25")).toBeInTheDocument(); // width
+      expect(screen.getByDisplayValue("15")).toBeInTheDocument(); // height
+    });
+  });
+
+  it("shows image info and allows removing loaded image", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    // Select image import type
+    const select =
+      screen.getByRole("combobox") || document.querySelector("select");
+    fireEvent.change(select, { target: { value: "image" } });
+
+    // Create a mock image file
+    const file = new File(["mock-image-data"], "floorplan.png", {
+      type: "image/png",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".jpg,.jpeg,.png"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Wait for image import success
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Floor-plan image imported successfully. Adjust map dimensions to match the floor-plan scale, then add wall/boundary entities and place beacons.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    // Verify image info is displayed
+    await waitFor(() => {
+      expect(screen.getByText("Floor-plan image loaded")).toBeInTheDocument();
+      // Use function matcher since "floorplan" may be part of " · floorplan" text node
+      expect(screen.getByText((content) => content.includes("floorplan"))).toBeInTheDocument();
+      expect(screen.getByText("Remove Image")).toBeInTheDocument();
+    });
+
+    // Click remove image button
+    const removeButton = screen.getByText("Remove Image");
+    fireEvent.click(removeButton);
+
+    // Verify image removed
+    await waitFor(() => {
+      expect(screen.getByText("Floor-plan image removed.")).toBeInTheDocument();
+      expect(screen.queryByText("Floor-plan image loaded")).not.toBeInTheDocument();
+      expect(screen.queryByText("Remove Image")).not.toBeInTheDocument();
+    });
+  });
+
+  it("replaces existing image when new image is uploaded", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    // Select image import type
+    const select =
+      screen.getByRole("combobox") || document.querySelector("select");
+    fireEvent.change(select, { target: { value: "image" } });
+
+    // Upload first image
+    const file1 = new File(["mock-image-data-1"], "first-image.jpg", {
+      type: "image/jpeg",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".jpg,.jpeg,.png"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file1] } });
+
+    await waitFor(() => {
+      expect(screen.getByText((content) => content.includes("Floor-plan image imported successfully"))).toBeInTheDocument();
+    });
+
+    // Upload second image (replace)
+    const file2 = new File(["mock-image-data-2"], "second-image.png", {
+      type: "image/png",
+    });
+
+    // Trigger file import again
+    fireEvent.click(importButton);
+    // File input should still be image type
+    const fileInput2 = document.querySelector(
+      'input[type="file"][accept=".jpg,.jpeg,.png"]',
+    );
+    fireEvent.change(fileInput2, { target: { files: [file2] } });
+
+    await waitFor(() => {
+      expect(screen.getByText((content) => content.includes("Floor-plan image imported successfully"))).toBeInTheDocument();
+    });
+
+    // Verify new image info is shown
+    await waitFor(() => {
+      expect(screen.getByText((content) => content.includes("second-image"))).toBeInTheDocument();
+    });
+  });
+
+  it("shows JPEG upload and displays correctly", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    const select =
+      screen.getByRole("combobox") || document.querySelector("select");
+    fireEvent.change(select, { target: { value: "image" } });
+
+    // Create a mock JPEG file
+    const file = new File(["mock-image-data"], "floorplan.jpeg", {
+      type: "image/jpeg",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".jpg,.jpeg,.png"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Floor-plan image imported successfully. Adjust map dimensions to match the floor-plan scale, then add wall/boundary entities and place beacons.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("rejects invalid image file (corrupted/non-image)", async () => {
+    renderMapTab();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Loading configuration..."),
+      ).not.toBeInTheDocument();
+    });
+
+    const importButton = screen.getByText("Import Floor Layout");
+    fireEvent.click(importButton);
+
+    const select =
+      screen.getByRole("combobox") || document.querySelector("select");
+    fireEvent.change(select, { target: { value: "image" } });
+
+    // Create a file with wrong extension but image type
+    const file = new File(["not an image"], "fake.jpg", {
+      type: "text/plain",
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"][accept=".jpg,.jpeg,.png"]',
+    );
+    expect(fileInput).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Should show error for invalid image
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Failed to load image. Please ensure it's a valid JPG or PNG file.",
+        ),
+      ).toBeInTheDocument();
     });
   });
 });

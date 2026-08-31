@@ -124,6 +124,7 @@ export function useMapCanvas({
  * @param {string} params.backgroundColor - Background color (default: from colorPalette)
  * @param {string} params.gridColor - Grid line color
  * @param {number} params.gridLines - Number of grid lines (default: 10)
+ * @param {HTMLImageElement|string} params.backgroundImage - Optional background image (data URL or Image element)
  */
 export function drawMapBase(
   ctx,
@@ -135,6 +136,7 @@ export function drawMapBase(
     backgroundColor = "#020617",
     gridColor = "rgba(148, 163, 184, 0.18)",
     gridLines = 10,
+    backgroundImage = null,
   },
 ) {
   const { offsetX, offsetY, renderWidth, renderHeight } = coords;
@@ -149,8 +151,44 @@ export function drawMapBase(
   // Map area background
   ctx.fillStyle = "#111827";
   ctx.fillRect(offsetX - 1, offsetY - 1, renderWidth + 2, renderHeight + 2);
-  ctx.fillStyle = backgroundColor;
-  ctx.fillRect(offsetX, offsetY, renderWidth, renderHeight);
+
+  // Draw background image if provided
+  if (backgroundImage) {
+    ctx.save();
+    // Clip to map area
+    ctx.beginPath();
+    ctx.rect(offsetX, offsetY, renderWidth, renderHeight);
+    ctx.clip();
+
+    const img =
+      backgroundImage instanceof HTMLImageElement ? backgroundImage : null;
+    const imgSrc = typeof backgroundImage === "string" ? backgroundImage : null;
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      // Image already loaded
+      ctx.globalAlpha = 0.6; // Semi-transparent overlay
+      ctx.drawImage(img, offsetX, offsetY, renderWidth, renderHeight);
+      ctx.globalAlpha = 1.0;
+    } else if (imgSrc) {
+      // Load image from data URL
+      const tempImg = new Image();
+      tempImg.onload = () => {
+        // Image will be drawn on next render cycle
+      };
+      tempImg.src = imgSrc;
+      // Draw immediately if we can (might not work on first render)
+      if (tempImg.complete && tempImg.naturalWidth > 0) {
+        ctx.globalAlpha = 0.6;
+        ctx.drawImage(tempImg, offsetX, offsetY, renderWidth, renderHeight);
+        ctx.globalAlpha = 1.0;
+      }
+    }
+    ctx.restore();
+  } else {
+    // Only fill with background color if no background image
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(offsetX, offsetY, renderWidth, renderHeight);
+  }
 
   // Grid
   ctx.strokeStyle = gridColor;
@@ -186,7 +224,11 @@ export function drawMapBase(
     const fillColor = entity.fillColor || null;
     const lineWidth = entity.lineWidth || 1;
 
-    if (entity.type === "line" || entity.type === "polyline") {
+    if (
+      entity.type === "line" ||
+      entity.type === "polyline" ||
+      entity.type === "wall"
+    ) {
       const [firstPoint, ...rest] = entity.points;
       if (!firstPoint || firstPoint.length < 2) return;
 

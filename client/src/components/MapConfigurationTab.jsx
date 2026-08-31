@@ -46,6 +46,7 @@ export default function MapConfigurationTab({
   const [localMessage, setLocalMessage] = useState("");
   const [localError, setLocalError] = useState("");
   const [placementBeacon, setPlacementBeacon] = useState(null);
+  const [importType, setImportType] = useState("json");
   const fileInputRef = useRef(null);
 
   // Determine which config/setConfig to use
@@ -57,6 +58,13 @@ export default function MapConfigurationTab({
   const error = parentConfig ? onError : localError;
   const setMessage = parentConfig ? onMessage : setLocalMessage;
   const setError = parentConfig ? onError : setLocalError;
+
+  // Ensure config has required structure (defensive defaults)
+  const safeConfig = {
+    map: config?.map || defaultFormState.map,
+    beacons: config?.beacons || [],
+    settings: config?.settings || defaultFormState.settings,
+  };
 
   // Load configuration if not using parent
   useEffect(() => {
@@ -96,7 +104,7 @@ export default function MapConfigurationTab({
     };
   }, [parentConfig]);
 
-  const beaconCount = useMemo(() => config.beacons.length, [config.beacons]);
+  const beaconCount = useMemo(() => safeConfig.beacons?.length || 0, [safeConfig.beacons]);
 
   function updateBeacon(index, field, value) {
     setConfig((current) => {
@@ -123,7 +131,7 @@ export default function MapConfigurationTab({
 
   function handlePlacementComplete(beacon, x, y) {
     const index = beacon._index;
-    if (index !== undefined && index >= 0 && index < config.beacons.length) {
+    if (index !== undefined && index >= 0 && index < safeConfig.beacons.length) {
       setConfig((current) => {
         const next = { ...current, beacons: [...current.beacons] };
         next.beacons[index] = { ...next.beacons[index], x, y };
@@ -145,16 +153,38 @@ export default function MapConfigurationTab({
       typeof jsonData.map.height !== "number"
     )
       return false;
-    if (!Array.isArray(jsonData.beacons)) return false;
-    if (!jsonData.settings || typeof jsonData.settings !== "object")
+    // Beacons are optional - user places them separately in TrackerHub
+    // Reference format uses empty object {} for beacons, also accept array []
+    if (jsonData.beacons !== undefined) {
+      const beacons = jsonData.beacons;
+      if (
+        !Array.isArray(beacons) &&
+        !(
+          beacons &&
+          typeof beacons === "object" &&
+          Object.keys(beacons).length === 0
+        )
+      ) {
+        return false;
+      }
+    }
+    // Settings are optional - managed separately in TrackerHub
+    if (
+      jsonData.settings !== undefined &&
+      typeof jsonData.settings !== "object"
+    )
       return false;
-    if (typeof jsonData.settings.signalPropagationFactor !== "number")
+    if (
+      jsonData.settings &&
+      typeof jsonData.settings.signalPropagationFactor !== "number"
+    )
       return false;
     if (jsonData.map.entities && !Array.isArray(jsonData.map.entities))
       return false;
     if (jsonData.map.entities) {
       for (const entity of jsonData.map.entities) {
-        if (entity.type !== "polyline") return false;
+        // Support polyline and wall types (reference uses "wall" for closed boundaries)
+        if (entity.type !== "polyline" && entity.type !== "wall") return false;
         if (!Array.isArray(entity.points) || entity.points.length < 2)
           return false;
         for (const point of entity.points) {
@@ -176,39 +206,129 @@ export default function MapConfigurationTab({
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Check file extension before reading
+    const fileName = file.name.toLowerCase();
+    const isImage =
+      fileName.endsWith(".jpg") ||
+      fileName.endsWith(".jpeg") ||
+      fileName.endsWith(".png");
+    const isJson = fileName.endsWith(".json");
+
+    if (!isJson && !isImage) {
+      setError(
+        "Unsupported file format. Please upload a JSON layout file or JPG/PNG floor-plan image.",
+      );
+      event.target.value = "";
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const jsonData = JSON.parse(e.target.result);
-        if (!validateLayoutStructure(jsonData)) {
-          setError(
-            "Invalid layout format. Expected: { map: { width, height, entities[] }, beacons[], settings: { signalPropagationFactor } }",
-          );
-          return;
+    if (isImage) {
+      // Handle image import - read as data URL for background display
+      reader.onload = (e) => {
+        try {
+          const imageDataUrl = e.target.result;
+          // Create a new image to get its dimensions
+          const img = new Image();
+          img.onload = () => {
+            // Use image dimensions as default map dimensions (in meters, assuming 1 pixel = 0.01m or similar)
+            // For now, use reasonable defaults that can be adjusted by user
+            const defaultWidth = 30;
+            const defaultHeight = 20;
+
+            setConfig((current) => ({
+              map: {
+                ...current.map,
+                name: fileName.replace(/\.(jpg|jpeg|png)$/i, ""),
+                width: defaultWidth,
+                height: defaultHeight,
+                entities: current.map.entities || [],
+                backgroundImage: imageDataUrl,
+                backgroundImageWidth: img.width,
+                backgroundImageHeight: img.height,
+              },
+              // Keep existing beacons and settings
+              beacons: current.beacons,
+              settings: current.settings,
+            }));
+            setMessage(
+              "Floor-plan image imported successfully. Adjust map dimensions to match the floor-plan scale, then add wall/boundary entities and place beacons.",
+            );
+            setError("");
+          };
+          img.onerror = () => {
+            setError(
+              "Failed to load image. Please ensure it's a valid JPG or PNG file.",
+            );
+          };
+          img.src = imageDataUrl;
+        } catch (err) {
+          setError("Failed to process image file.");
         }
-        setConfig((current) => ({
-          map: {
-            ...current.map,
-            name: jsonData.map.name || current.map.name,
-            width: jsonData.map.width,
-            height: jsonData.map.height,
-            entities: jsonData.map.entities || [],
-          },
-          beacons: jsonData.beacons,
-          settings: {
-            ...current.settings,
-            signalPropagationFactor: jsonData.settings.signalPropagationFactor,
-          },
-        }));
-        setMessage(
-          "Layout imported successfully. Review and save configuration.",
-        );
-        setError("");
-      } catch (err) {
-        setError("Failed to parse JSON file: " + err.message);
-      }
-    };
-    reader.readAsText(file);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // Handle JSON import
+      reader.onload = (e) => {
+        try {
+          const jsonData = JSON.parse(e.target.result);
+          if (!validateLayoutStructure(jsonData)) {
+            setError(
+              "Invalid floor layout. Expected a map object with width, height, and optional polyline/wall entities. Beacons and settings are managed separately in TrackerHub.",
+            );
+            return;
+          }
+          // Normalize beacons: treat empty object {} same as empty array [] or undefined (preserve existing)
+          const importedBeacons = jsonData.beacons;
+          const hasBeacons =
+            importedBeacons !== undefined &&
+            !(
+              importedBeacons &&
+              typeof importedBeacons === "object" &&
+              Object.keys(importedBeacons).length === 0
+            ) &&
+            !(Array.isArray(importedBeacons) && importedBeacons.length === 0);
+
+          setConfig((current) => ({
+            map: {
+              ...current.map,
+              name: jsonData.map.name || current.map.name,
+              width: jsonData.map.width,
+              height: jsonData.map.height,
+              entities: jsonData.map.entities || [],
+              // Clear background image when importing JSON layout
+              backgroundImage: undefined,
+              backgroundImageWidth: undefined,
+              backgroundImageHeight: undefined,
+            },
+            // Only update beacons if they were provided as non-empty array in the layout file
+            // Otherwise keep existing beacons (beacon config is managed separately)
+            beacons: hasBeacons
+              ? Array.isArray(importedBeacons)
+                ? importedBeacons
+                : []
+              : current.beacons,
+            // Only update settings if provided
+            settings:
+              jsonData.settings !== undefined
+                ? {
+                    ...current.settings,
+                    signalPropagationFactor:
+                      jsonData.settings?.signalPropagationFactor ??
+                      current.settings.signalPropagationFactor,
+                  }
+                : current.settings,
+          }));
+          setMessage(
+            "Floor layout imported successfully. Map dimensions and wall/boundary entities loaded. Add and place beacons separately using the beacon list.",
+          );
+          setError("");
+        } catch (err) {
+          setError("The selected file is not valid JSON.");
+        }
+      };
+      reader.readAsText(file);
+    }
     event.target.value = "";
   }
 
@@ -266,6 +386,19 @@ export default function MapConfigurationTab({
     );
   }
 
+  function handleRemoveImage() {
+    setConfig((current) => ({
+      map: {
+        ...current.map,
+        backgroundImage: undefined,
+        backgroundImageWidth: undefined,
+        backgroundImageHeight: undefined,
+      },
+    }));
+    setMessage("Floor-plan image removed.");
+    setError("");
+  }
+
   return (
     <div className="grid gap-6">
       <div className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-sm backdrop-blur">
@@ -295,25 +428,86 @@ export default function MapConfigurationTab({
             >
               {beaconCount} beacon{beaconCount === 1 ? "" : "s"}
             </div>
-            <button
-              type="button"
-              onClick={triggerFileImport}
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-white"
-              style={{
-                backgroundColor: colorPalette.primary.main,
-              }}
-            >
-              Import Layout
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept=".json"
-              style={{ display: "none" }}
-              onChange={handleImportLayout}
-            />
+            <div className="flex items-center gap-2">
+              <select
+                value={importType}
+                onChange={(e) => setImportType(e.target.value)}
+                className="rounded-lg px-3 py-1.5 text-sm bg-white border border-slate-300"
+                style={{ color: colorPalette.text.primary }}
+              >
+                <option value="json">JSON Layout</option>
+                <option value="image">Image (JPG/PNG)</option>
+              </select>
+              <button
+                type="button"
+                onClick={triggerFileImport}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-white"
+                style={{
+                  backgroundColor: colorPalette.primary.main,
+                }}
+              >
+                Import Floor Layout
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept={importType === "json" ? ".json" : ".jpg,.jpeg,.png"}
+                title={
+                  importType === "json"
+                    ? "Supported format: JSON floor layout with map dimensions and polyline/wall entities"
+                    : "Supported formats: JPG/PNG floor-plan images"
+                }
+                style={{ display: "none" }}
+                onChange={handleImportLayout}
+              />
+            </div>
           </div>
         </div>
+
+        {/* Show floor-plan image info when loaded */}
+        {safeConfig.map.backgroundImage && (
+          <div className="mb-4 flex items-center justify-between rounded-xl bg-emerald-50/50 border border-emerald-200 p-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-emerald-100 p-2">
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  style={{ color: colorPalette.success.dark }}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium" style={{ color: colorPalette.success.dark }}>
+                  Floor-plan image loaded
+                </p>
+                <p className="text-xs" style={{ color: colorPalette.success.main }}>
+                  {safeConfig.map.backgroundImageWidth
+                    ? `${safeConfig.map.backgroundImageWidth} × ${safeConfig.map.backgroundImageHeight} px`
+                    : "Unknown dimensions"}
+                  {safeConfig.map.name && ` · ${safeConfig.map.name}`}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleRemoveImage}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-white"
+              style={{
+                backgroundColor: colorPalette.error.main,
+              }}
+            >
+              Remove Image
+            </button>
+          </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <label
@@ -323,7 +517,7 @@ export default function MapConfigurationTab({
             Map name
             <input
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none"
-              value={config.map.name}
+              value={safeConfig.map.name}
               onChange={(event) =>
                 setConfig((current) => ({
                   ...current,
@@ -341,7 +535,7 @@ export default function MapConfigurationTab({
               type="number"
               step="0.1"
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none"
-              value={config.settings.signalPropagationFactor}
+              value={config.settings?.signalPropagationFactor ?? 2.5}
               onChange={(event) =>
                 setConfig((current) => ({
                   ...current,
@@ -361,7 +555,7 @@ export default function MapConfigurationTab({
             <input
               type="number"
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none"
-              value={config.map.width}
+              value={safeConfig.map.width}
               onChange={(event) =>
                 setConfig((current) => ({
                   ...current,
@@ -381,7 +575,7 @@ export default function MapConfigurationTab({
             <input
               type="number"
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none"
-              value={config.map.height}
+              value={safeConfig.map.height}
               onChange={(event) =>
                 setConfig((current) => ({
                   ...current,
@@ -418,7 +612,7 @@ export default function MapConfigurationTab({
 
           <MapEditor
             mapConfig={config}
-            beacons={config.beacons}
+            beacons={safeConfig.beacons}
             onBeaconsChange={handleBeaconsChange}
             placementBeacon={placementBeacon}
             onPlacementComplete={handlePlacementComplete}
@@ -446,7 +640,7 @@ export default function MapConfigurationTab({
           </div>
 
           <div className="space-y-3">
-            {config.beacons.map((beacon, index) => (
+            {safeConfig.beacons.map((beacon, index) => (
               <div
                 key={`${beacon.uuid}-${index}`}
                 className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3"

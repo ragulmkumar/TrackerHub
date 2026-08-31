@@ -1,0 +1,89 @@
+{
+  "map": {
+    "width": 26.677,
+    "height": 10.074,
+    "entities": [
+      {
+        "type": "polyline",
+        "points": [
+          [0.000, 10.074],
+          [26.677, 10.074]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [26.677, 10.074],
+          [26.677, 0.000]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [26.677, 0.000],
+          [4.324, 0.000]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [4.324, 0.000],
+          [4.324, 4.889]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [4.324, 4.889],
+          [0.000, 4.889]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [0.000, 4.889],
+          [0.000, 10.074]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [2.876, 10.074],
+          [2.876, 7.473]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [2.876, 7.473],
+          [0.000, 7.473]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [18.668, 10.074],
+          [18.668, 0.000]
+        ],
+        "closed": false
+      },
+      {
+        "type": "polyline",
+        "points": [
+          [18.668, 5.185],
+          [26.677, 5.185]
+        ],
+        "closed": false
+      }
+    ]
+  },
+  "beacons": []
+}

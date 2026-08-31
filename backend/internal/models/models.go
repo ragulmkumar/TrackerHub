@@ -67,9 +67,9 @@ type WebUIBeaconConfig struct {
 	MACAddress  string  `json:"macAddress,omitempty"` // Physical MAC address if known
 }
 
-// WebUIMapEntity represents an entity on the map (polyline, etc.)
+// WebUIMapEntity represents an entity on the map (polyline, wall, etc.)
 type WebUIMapEntity struct {
-	Type        string       `json:"type" validate:"required,oneof=polyline"`        // e.g., 'polyline'
+	Type        string       `json:"type" validate:"required,oneof=polyline wall"`   // e.g., 'polyline', 'wall'
 	Points      [][2]float64 `json:"points" validate:"required,min=2,dive,required"` // List of [x, y] coordinates
 	Closed      *bool        `json:"closed,omitempty"`
 	StrokeColor string       `json:"strokeColor,omitempty"` // e.g., '#333333'
@@ -77,12 +77,15 @@ type WebUIMapEntity struct {
 	FillColor   string       `json:"fillColor,omitempty"`   // If supporting filled shapes
 }
 
-// WebUIMapInfo contains map dimensions and entities
+// WebUIMapInfo contains map dimensions, entities, and optional background image
 type WebUIMapInfo struct {
-	Name     string           `json:"name,omitempty"`
-	Width    float64          `json:"width" validate:"required,gt=0"`  // in meters
-	Height   float64          `json:"height" validate:"required,gt=0"` // in meters
-	Entities []WebUIMapEntity `json:"entities,omitempty"`
+	Name                  string           `json:"name,omitempty"`
+	Width                 float64          `json:"width" validate:"required,gt=0"`  // in meters
+	Height                float64          `json:"height" validate:"required,gt=0"` // in meters
+	Entities              []WebUIMapEntity `json:"entities,omitempty"`
+	BackgroundImage       string           `json:"backgroundImage,omitempty"`       // Base64 encoded image data URL
+	BackgroundImageWidth  int              `json:"backgroundImageWidth,omitempty"`  // Image width in pixels
+	BackgroundImageHeight int              `json:"backgroundImageHeight,omitempty"` // Image height in pixels
 }
 
 // WebUISettings contains configuration settings for positioning
