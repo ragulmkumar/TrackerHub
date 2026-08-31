@@ -4,6 +4,7 @@ import {
   saveServerRuntimeConfiguration,
 } from "../services/configApiService";
 import colorPalette from "../themes/colorPalette";
+import ToggleSwitch from "./ToggleSwitch";
 
 const defaultRuntimeConfig = {
   mqtt: {
@@ -269,49 +270,51 @@ export default function TrackerAccessControlCard() {
       ) : (
         <div className="mt-6 grid gap-4 lg:grid-cols-1">
           <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <span
                 className="text-sm font-medium"
                 style={{ color: colorPalette.text.secondary }}
               >
                 Enable tracker access control
               </span>
-              <input
-                type="checkbox"
-                checked={config.trackerAccessControl.enabled}
-                onChange={(event) =>
+              <ToggleSwitch
+                checked={Boolean(config.trackerAccessControl.enabled)}
+                onChange={(value) =>
                   setConfig((current) => ({
                     ...current,
                     trackerAccessControl: {
                       ...current.trackerAccessControl,
-                      enabled: event.target.checked,
+                      enabled: value,
                     },
                   }))
                 }
                 disabled={!editing}
+                label=""
+                size="sm"
               />
             </div>
 
-            <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <span
                 className="text-sm font-medium"
                 style={{ color: colorPalette.text.secondary }}
               >
                 Allow all trackers
               </span>
-              <input
-                type="checkbox"
-                checked={config.trackerAccessControl.allowAll}
-                onChange={(event) =>
+              <ToggleSwitch
+                checked={Boolean(config.trackerAccessControl.allowAll)}
+                onChange={(value) =>
                   setConfig((current) => ({
                     ...current,
                     trackerAccessControl: {
                       ...current.trackerAccessControl,
-                      allowAll: event.target.checked,
+                      allowAll: value,
                     },
                   }))
                 }
                 disabled={!editing || !config.trackerAccessControl.enabled}
+                label=""
+                size="sm"
               />
             </div>
 

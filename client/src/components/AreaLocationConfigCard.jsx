@@ -4,6 +4,7 @@ import {
   saveServerRuntimeConfiguration,
 } from "../services/configApiService";
 import colorPalette from "../themes/colorPalette";
+import ToggleSwitch from "./ToggleSwitch";
 
 const defaultRuntimeConfig = {
   mqtt: {
@@ -182,30 +183,18 @@ export default function AreaLocationConfigCard() {
       ) : (
         <div className="mt-6 grid gap-4 lg:grid-cols-1">
           <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <label
-              className="flex items-center justify-between gap-2 text-sm"
-              style={{ color: colorPalette.text.secondary }}
-            >
-              <span>Enable area location</span>
-              <input
-                type="checkbox"
-                checked={config.allowAreaLocation}
-                onChange={(event) =>
-                  setConfig((current) => ({
-                    ...current,
-                    allowAreaLocation: event.target.checked,
-                  }))
-                }
-                disabled={!editing}
-              />
-            </label>
-            <p
-              className="mt-3 text-sm"
-              style={{ color: colorPalette.text.secondary }}
-            >
-              When enabled, the backend allows area-based location handling for
-              the positioning flow.
-            </p>
+            <ToggleSwitch
+              checked={Boolean(config.allowAreaLocation)}
+              onChange={(value) =>
+                setConfig((current) => ({
+                  ...current,
+                  allowAreaLocation: value,
+                }))
+              }
+              disabled={!editing}
+              label="Enable area location"
+              description="When enabled, the backend allows area-based location handling for the positioning flow."
+            />
           </div>
         </div>
       )}

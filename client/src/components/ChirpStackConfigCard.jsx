@@ -4,6 +4,7 @@ import {
   saveServerRuntimeConfiguration,
 } from "../services/configApiService";
 import colorPalette from "../themes/colorPalette";
+import ToggleSwitch from "./ToggleSwitch";
 
 const defaultRuntimeConfig = {
   mqtt: {
@@ -227,27 +228,20 @@ export default function ChirpStackConfigCard() {
       ) : (
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <h3
                 className="font-semibold"
                 style={{ color: colorPalette.text.primary }}
               >
                 Connection profile
               </h3>
-              <label
-                className="flex items-center gap-2 text-sm"
-                style={{ color: colorPalette.text.secondary }}
-              >
-                <input
-                  type="checkbox"
-                  checked={config.mqtt.enabled}
-                  onChange={(event) =>
-                    updateField("enabled", event.target.checked)
-                  }
-                  disabled={!editing}
-                />
-                Enable ChirpStack MQTT
-              </label>
+              <ToggleSwitch
+                checked={Boolean(config.mqtt.enabled)}
+                onChange={(value) => updateField("enabled", value)}
+                disabled={!editing}
+                label=""
+                size="sm"
+              />
             </div>
             <div className="space-y-3">
               <label

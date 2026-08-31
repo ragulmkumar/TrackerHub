@@ -958,7 +958,7 @@ describe("ConfigurationPage - App Configuration Tab", () => {
       expect(
         screen.getByText("Runtime service and MQTT settings"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Server")).toBeInTheDocument();
+      expect(screen.getByText("Server & MQTT")).toBeInTheDocument();
       expect(screen.getByText("MQTT credentials")).toBeInTheDocument();
       expect(screen.getByText("Kalman filter")).toBeInTheDocument();
     });
@@ -1068,7 +1068,12 @@ describe("ConfigurationPage - App Configuration Tab", () => {
           "Configure OpenStream connectivity for tracker ingestion",
         ),
       ).toBeInTheDocument();
-      expect(screen.getByText("Enable OpenStream")).toBeInTheDocument();
+      // "Connection profile" appears in multiple cards
+      expect(screen.getAllByText("Connection profile").length).toBeGreaterThan(
+        0,
+      );
+      // ToggleSwitch renders an "Enabled"/"Disabled" status badge
+      expect(screen.getAllByText("Disabled").length).toBeGreaterThan(0);
       expect(screen.getByText("Server region")).toBeInTheDocument();
       // Use getAllByText since "Application ID" appears in multiple places
       expect(screen.getAllByText("Application ID").length).toBeGreaterThan(0);
@@ -1099,7 +1104,12 @@ describe("ConfigurationPage - App Configuration Tab", () => {
           "Configure ChirpStack connectivity for LoRaWAN tracker ingestion",
         ),
       ).toBeInTheDocument();
-      expect(screen.getByText("Enable ChirpStack MQTT")).toBeInTheDocument();
+      // "Connection profile" appears in multiple cards
+      expect(screen.getAllByText("Connection profile").length).toBeGreaterThan(
+        0,
+      );
+      // ToggleSwitch renders an "Enabled"/"Disabled" status badge
+      expect(screen.getAllByText("Disabled").length).toBeGreaterThan(0);
       // Use getAllByText since "Broker host" appears in multiple places
       expect(screen.getAllByText("Broker host").length).toBeGreaterThan(0);
       // Use getAllByText since "Application ID" appears in multiple places
@@ -1570,7 +1580,9 @@ describe("ConfigurationPage - Layout Import - Image and Reference Format", () =>
     await waitFor(() => {
       expect(screen.getByText("Floor-plan image loaded")).toBeInTheDocument();
       // Use function matcher since "floorplan" may be part of " · floorplan" text node
-      expect(screen.getByText((content) => content.includes("floorplan"))).toBeInTheDocument();
+      expect(
+        screen.getByText((content) => content.includes("floorplan")),
+      ).toBeInTheDocument();
       expect(screen.getByText("Remove Image")).toBeInTheDocument();
     });
 
@@ -1581,7 +1593,9 @@ describe("ConfigurationPage - Layout Import - Image and Reference Format", () =>
     // Verify image removed
     await waitFor(() => {
       expect(screen.getByText("Floor-plan image removed.")).toBeInTheDocument();
-      expect(screen.queryByText("Floor-plan image loaded")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Floor-plan image loaded"),
+      ).not.toBeInTheDocument();
       expect(screen.queryByText("Remove Image")).not.toBeInTheDocument();
     });
   });
@@ -1615,7 +1629,11 @@ describe("ConfigurationPage - Layout Import - Image and Reference Format", () =>
     fireEvent.change(fileInput, { target: { files: [file1] } });
 
     await waitFor(() => {
-      expect(screen.getByText((content) => content.includes("Floor-plan image imported successfully"))).toBeInTheDocument();
+      expect(
+        screen.getByText((content) =>
+          content.includes("Floor-plan image imported successfully"),
+        ),
+      ).toBeInTheDocument();
     });
 
     // Upload second image (replace)
@@ -1632,12 +1650,18 @@ describe("ConfigurationPage - Layout Import - Image and Reference Format", () =>
     fireEvent.change(fileInput2, { target: { files: [file2] } });
 
     await waitFor(() => {
-      expect(screen.getByText((content) => content.includes("Floor-plan image imported successfully"))).toBeInTheDocument();
+      expect(
+        screen.getByText((content) =>
+          content.includes("Floor-plan image imported successfully"),
+        ),
+      ).toBeInTheDocument();
     });
 
     // Verify new image info is shown
     await waitFor(() => {
-      expect(screen.getByText((content) => content.includes("second-image"))).toBeInTheDocument();
+      expect(
+        screen.getByText((content) => content.includes("second-image")),
+      ).toBeInTheDocument();
     });
   });
 
