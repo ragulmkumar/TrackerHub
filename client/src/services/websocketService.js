@@ -58,23 +58,32 @@ class WebSocketService {
       }
     }
 
+    let ws;
     try {
-      this.ws = new WebSocket(wsUrl);
+      ws = new WebSocket(wsUrl);
     } catch {
       this.setWSStatus("error");
       this.scheduleReconnect();
       return;
     }
+    this.ws = ws;
 
-    this.ws.addEventListener("open", () => {
+    ws.addEventListener("open", () => {
       this.setWSStatus("connected");
     });
 
-    this.ws.addEventListener("message", (event) => {
+    ws.addEventListener("message", (event) => {
       this.handleMessage(event.data);
     });
 
-    this.ws.addEventListener("close", () => {
+    ws.addEventListener("close", () => {
+      // Only react if this is still the tracked socket. A stale socket that
+      // closes after a newer connection was established (e.g. leaving the
+      // dashboard and coming back) must not wipe out the live connection,
+      // mark it offline, or schedule a spurious reconnect.
+      if (this.ws !== ws) {
+        return;
+      }
       this.ws = null;
       this.setWSStatus("offline");
       if (!this.manualClose) {
@@ -82,7 +91,7 @@ class WebSocketService {
       }
     });
 
-    this.ws.addEventListener("error", () => {
+    ws.addEventListener("error", () => {
       this.setWSStatus("error");
     });
   }
@@ -188,7 +197,12 @@ class WebSocketService {
     }
 
     if (type === "tracker_update") {
-      if (this.mqttEnabled === null || this.mqttEnabled === false) {
+      // Only suppress updates when MQTT is explicitly disabled. When the flag
+      // is still undefined (startup) or null (runtime config not loaded yet),
+      // we still process updates — otherwise live reports are silently dropped
+      // during the window between the WebSocket connecting and the runtime
+      // config resolving, which made the dashboard appear empty until a reload.
+      if (this.mqttEnabled === false) {
         return;
       }
       this.updateTrackers(data);

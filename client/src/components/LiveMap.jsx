@@ -15,6 +15,7 @@ export default function LiveMap({
   trackers = [],
   showTrails,
   wsStatus,
+  className = "",
 }) {
   const wrapperRef = useRef(null);
   const canvasRef = useRef(null);
@@ -216,9 +217,11 @@ export default function LiveMap({
   const beaconCount = beacons.length;
 
   return (
-    <div className="relative min-h-105 overflow-hidden rounded-3xl border border-slate-700 bg-slate-950/75 shadow-2xl backdrop-blur-xl">
+    <div
+      className={`relative min-h-105 overflow-hidden rounded-3xl border border-slate-700 bg-slate-950/75 shadow-2xl backdrop-blur-xl ${className}`}
+    >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-slate-950/80 to-transparent" />
-      <div ref={wrapperRef} className="relative min-h-105 w-full">
+      <div ref={wrapperRef} className="relative min-h-105 h-full w-full">
         <canvas ref={canvasRef} className="h-full w-full" />
       </div>
       <div className="absolute right-4 top-4 rounded-2xl bg-slate-900/85 px-3 py-2 text-xs uppercase tracking-[0.22em] text-slate-200">

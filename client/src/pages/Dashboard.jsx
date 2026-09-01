@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -284,6 +284,38 @@ const Icons = {
       <path d="M8 17V9M13 17V5M18 17v-7" />
     </svg>
   ),
+  expand: (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 3H5a2 2 0 00-2 2v3" />
+      <path d="M21 8V5a2 2 0 00-2-2h-3" />
+      <path d="M3 16v3a2 2 0 002 2h3" />
+      <path d="M16 21h3a2 2 0 002-2v-3" />
+    </svg>
+  ),
+  collapse: (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 3v3a2 2 0 01-2 2H3" />
+      <path d="M21 8h-3a2 2 0 01-2-2V3" />
+      <path d="M3 16h3a2 2 0 012 2v3" />
+      <path d="M16 21v-3a2 2 0 012-2h3" />
+    </svg>
+  ),
 };
 
 /* ------------------------------------------------------------------ */
@@ -302,6 +334,26 @@ const Dashboard = () => {
   const [wsStatus, setWsStatus] = useState("offline");
   const [mqttStatus, setMqttStatus] = useState("disconnected");
   const [showTrails, setShowTrails] = useState(true);
+
+  const [isMapFullScreen, setIsMapFullScreen] = useState(false);
+  const fullScreenRef = useRef(null);
+
+  /* Sync the fullscreen overlay with the browser Fullscreen API so that the
+     Escape key / browser fullscreen UI keeps the app state in agreement. */
+  useEffect(() => {
+    if (isMapFullScreen) {
+      fullScreenRef.current?.requestFullscreen?.().catch(() => {});
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    }
+  }, [isMapFullScreen]);
+
+  useEffect(() => {
+    const onChange = () =>
+      setIsMapFullScreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -370,14 +422,14 @@ const Dashboard = () => {
   const mqttEnabled = runtimeConfig?.mqtt?.enabled;
   useEffect(() => {
     if (runtimeConfig == null) {
-      websocketService.setMQTTEnabled(null);
       return;
     }
+    // Never set the flag to null: doing so before the runtime config resolves
+    // caused live tracker updates during that window to be dropped (the server
+    // stops broadcasting tracker_updates on its own when MQTT is disabled, so
+    // the client has no need to clear the list here — that raced with the
+    // server's initial_state snapshot and left the dashboard empty).
     websocketService.setMQTTEnabled(mqttEnabled !== false);
-    if (mqttEnabled === false) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTrackers([]);
-    }
   }, [runtimeConfig, mqttEnabled]);
 
   const totalTrackers = trackers.length;
@@ -518,18 +570,6 @@ const Dashboard = () => {
                 </span>
               </div>
               <Link
-                to="/monitor"
-                className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition hover:opacity-95"
-                style={{
-                  background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
-                  color: colorPalette.primary.contrastText,
-                  boxShadow: `0 4px 16px ${colorPalette.primary.main}30`,
-                }}
-              >
-                {Icons.chart}
-                Monitor
-              </Link>
-              <Link
                 to="/configuration"
                 className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition hover:opacity-95"
                 style={{
@@ -661,6 +701,19 @@ const Dashboard = () => {
                   }}
                 >
                   {showTrails ? "Hide trails" : "Show trails"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsMapFullScreen(true)}
+                  title="Open fullscreen map"
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold text-white transition hover:opacity-95"
+                  style={{
+                    background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
+                    boxShadow: `0 4px 16px ${colorPalette.primary.main}30`,
+                  }}
+                >
+                  {Icons.expand}
+                  Fullscreen
                 </button>
               </div>
             </div>
@@ -841,9 +894,10 @@ const Dashboard = () => {
               ))}
 
               <div className="pt-2">
-                <Link
-                  to="/tracker-mode"
-                  className="group flex items-center justify-between rounded-2xl px-4 py-3 transition-all duration-200 hover:scale-[1.01]"
+                <button
+                  type="button"
+                  onClick={() => setIsMapFullScreen(true)}
+                  className="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-200 hover:scale-[1.01]"
                   style={{
                     background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
                     color: colorPalette.primary.contrastText,
@@ -851,30 +905,106 @@ const Dashboard = () => {
                   }}
                 >
                   <div>
-                    <p className="text-sm font-semibold">Open live monitor</p>
+                    <p className="text-sm font-semibold">Open fullscreen map</p>
                     <p className="text-xs opacity-85">
-                      Full map and tracker view
+                      Expand the live map and tracker view
                     </p>
                   </div>
                   <span className="transition-transform duration-200 group-hover:translate-x-1">
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M9 18l6-6-6-6" />
-                    </svg>
+                    {Icons.expand}
                   </span>
-                </Link>
+                </button>
               </div>
             </div>
           </GlassCard>
         </div>
       </div>
+
+      {isMapFullScreen && (
+        <div
+          ref={fullScreenRef}
+          className="fixed inset-0 z-50 flex flex-col overflow-hidden"
+          style={{ background: "#020617" }}
+        >
+          <div
+            className="flex flex-col gap-3 border-b border-slate-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(2,6,23,0.95))",
+            }}
+          >
+            <div>
+              <p
+                className="text-[10px] font-semibold uppercase tracking-[0.28em]"
+                style={{ color: colorPalette.secondary.main }}
+              >
+                Indoor Positioning Overview
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-white">
+                Live position map
+              </h2>
+              <p className="text-xs text-slate-400">
+                {mapInfo
+                  ? `${mapInfo.name || "Unnamed map"} · ${mapInfo.width}m × ${mapInfo.height}m`
+                  : "Real-time tracker positions"}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill status={wsStatus} />
+              <button
+                type="button"
+                onClick={() => setShowTrails((cur) => !cur)}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-semibold text-slate-100 transition hover:bg-slate-800"
+              >
+                {showTrails ? "Hide trails" : "Show trails"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMapFullScreen(false)}
+                className="flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold text-white transition hover:opacity-95"
+                style={{
+                  background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
+                  boxShadow: `0 4px 16px ${colorPalette.primary.main}30`,
+                }}
+              >
+                {Icons.collapse}
+                Exit fullscreen
+              </button>
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4 lg:p-5">
+              <div className="flex-1 overflow-hidden rounded-2xl border border-slate-700">
+                {loading ? (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                    Loading configured map...
+                  </div>
+                ) : (
+                  <LiveMap
+                    mapConfig={mapConfig}
+                    beacons={beacons}
+                    trackers={trackers}
+                    showTrails={showTrails}
+                    wsStatus={wsStatus}
+                    className="h-full rounded-2xl"
+                  />
+                )}
+              </div>
+            </div>
+            <div className="shrink-0 border-t border-slate-800 bg-slate-950/60 lg:w-80 lg:border-l lg:border-t-0">
+              <div className="px-4 pt-3 lg:pt-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  Active trackers
+                </p>
+              </div>
+              <div className="max-h-72 overflow-y-auto p-3 lg:max-h-none lg:h-[calc(100%-2.5rem)]">
+                <TrackerList trackers={trackers} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
