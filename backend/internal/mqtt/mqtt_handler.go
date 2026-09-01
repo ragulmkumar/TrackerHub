@@ -132,23 +132,52 @@ func (h *MQTTHandler) StartSubscribing() error {
 
 // handleMQTTMessage processes incoming MQTT messages
 func (h *MQTTHandler) handleMQTTMessage(msg MQTT.Message) {
-	// Parse the topic to extract device EUI and measurement ID
+	// Parse the topic to extract device EUI and measurement ID.
+	//
+	// Supported topic formats:
+	//   1. ChirpStack v4 / device_sensor_data:
+	//      /device_sensor_data/{ApplicationID}/{devEui}/{channelId}/{slotId}/{measurementId}
+	//      Device EUI at index 3, measurement ID at index 6.
+	//      Messages with measurementId != "5002" (BLE scan) are ignored.
+	//
+	//   2. ChirpStack v4 integration:
+	//      application/{ApplicationID}/device/{devEui}/event/up
+	//      Device EUI at index 3. No measurement ID filtering (all uplinks processed).
 	topic := msg.Topic()
-	// Expected format: /device_sensor_data/{ApplicationID}/{devEui}/{channelId}/{slotId}/{measurementId}
-	// We're interested in messages where measurementId == "5002"
-
-	// Split topic by '/'
 	parts := strings.Split(topic, "/")
-	if len(parts) < 7 || !strings.HasPrefix(topic, "/device_sensor_data/") {
-		// Ignore malformed topics
-		return
+
+	deviceEUI := ""
+	isDeviceSensorData := strings.HasPrefix(topic, "/device_sensor_data/")
+
+	if isDeviceSensorData {
+		// Format: /device_sensor_data/{ApplicationID}/{devEui}/{channelId}/{slotId}/{measurementId}
+		if len(parts) < 7 {
+			return
+		}
+		deviceEUI = parts[3]
+		measurementID := parts[6]
+		if measurementID != "5002" {
+			// Only process BLE scan results (measurement ID 5002)
+			return
+		}
+	} else {
+		// Format: application/{ApplicationID}/device/{devEui}/event/up
+		// Also handle without leading slash: application/{ApplicationID}/device/{devEui}/event/up
+		if len(parts) >= 5 {
+			// Try to find "device" segment to locate EUI
+			for i, seg := range parts {
+				if seg == "device" && i+1 < len(parts) {
+					deviceEUI = parts[i+1]
+					break
+				}
+			}
+		}
+		if deviceEUI == "" {
+			return
+		}
 	}
 
-	deviceEUI := parts[3]
-	measurementID := parts[6]
-
-	if measurementID != "5002" {
-		// Ignore non-relevant measurements
+	if deviceEUI == "" {
 		return
 	}
 	if h.runtimeConfig != nil {

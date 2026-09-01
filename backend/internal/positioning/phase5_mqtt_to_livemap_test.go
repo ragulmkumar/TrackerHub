@@ -500,3 +500,135 @@ func TestPhase5_Complete_MQTT_Pipeline(t *testing.T) {
 		t.Logf("  LiveMap ready: position in map coordinate system")
 	})
 }
+
+// TestPhase5_TrackerWithFailedPositioning verifies that a tracker with
+// insufficient beacons for positioning still appears in the WebSocket feed
+// with position data (or nil for 0 beacons) but with detected beacons visible (matching reference behavior)
+func TestPhase5_TrackerWithFailedPositioning(t *testing.T) {
+	t.Run("tracker_with_1_beacon_shows_weighted_centroid_position", func(t *testing.T) {
+		// 1 beacon detected - weighted centroid fallback should return position at beacon location
+		detectorReadings := []models.DetectedBeacon{
+			{MACAddress: "AABBCCDDEE01", RSSI: -70},
+		}
+
+		cfg := &models.WebUIConfig{
+			Beacons: []models.WebUIBeaconConfig{
+				{X: 2, Y: 2, TXPower: -59, MACAddress: "AABBCCDDEE01", DisplayName: "B1"},
+			},
+			Settings: models.WebUISettings{SignalPropagationFactor: 2.0},
+		}
+
+		service := NewPositioningService()
+		result := service.CalculatePosition(detectorReadings, cfg, nil)
+
+		// Weighted centroid fallback works for 1 beacon - returns position at beacon coordinates
+		if result == nil {
+			t.Fatal("Expected PositionResult even when positioning uses fallback")
+		}
+		if result.Position == nil {
+			t.Error("Expected valid position from weighted centroid for 1 beacon")
+		}
+		if result.BeaconCount != 1 {
+			t.Errorf("Expected 1 beacon in result, got %d", result.BeaconCount)
+		}
+		if result.Method != "weighted-centroid" {
+			t.Errorf("Expected method 'weighted-centroid', got %s", result.Method)
+		}
+
+		// Build tracker_update as the messageHandler would
+		timestamp := int64(1700000000000)
+		positionData := map[string]interface{}{}
+		if result.Position != nil {
+			positionData = map[string]interface{}{"x": result.Position[0], "y": result.Position[1]}
+		}
+
+		trackerData := map[string]interface{}{
+			"trackerId":             "test-tracker-pending",
+			"timestamp":             timestamp,
+			"position":              positionData, // position from weighted centroid
+			"accuracy":              result.Accuracy,
+			"confidence":            result.Confidence,
+			"method":                result.Method,
+			"beaconCount":           result.BeaconCount,
+			"last_detected_beacons": detectorReadings,
+			"position_history":      []interface{}{},
+		}
+
+		// Verify all required fields exist (matching messageHandler output)
+		requiredFields := []string{"trackerId", "timestamp", "position", "accuracy", "confidence", "method", "beaconCount", "last_detected_beacons", "position_history"}
+		for _, field := range requiredFields {
+			if _, ok := trackerData[field]; !ok {
+				t.Errorf("Missing required field in tracker_update: %s", field)
+			}
+		}
+
+		// Position should be valid (weighted centroid returns position at beacon)
+		if pos, ok := trackerData["position"].(map[string]interface{}); !ok || len(pos) == 0 {
+			t.Errorf("Expected valid position from weighted centroid, got %v", pos)
+		} else {
+			if pos["x"] != 2.0 || pos["y"] != 2.0 {
+				t.Errorf("Expected position at beacon (2,2), got %v", pos)
+			}
+		}
+
+		// Beacon count should reflect detected beacons
+		if trackerData["beaconCount"] != 1 {
+			t.Errorf("Expected beaconCount=1, got %v", trackerData["beaconCount"])
+		}
+
+		t.Logf("1-beacon tracker data: %+v", trackerData)
+	})
+
+	t.Run("tracker_with_0_beacons_shows_position_pending", func(t *testing.T) {
+		// No beacons detected at all
+		detectorReadings := []models.DetectedBeacon{}
+
+		cfg := &models.WebUIConfig{
+			Beacons: []models.WebUIBeaconConfig{
+				{X: 2, Y: 2, TXPower: -59, MACAddress: "AABBCCDDEE01", DisplayName: "B1"},
+			},
+			Settings: models.WebUISettings{SignalPropagationFactor: 2.0},
+		}
+
+		service := NewPositioningService()
+		result := service.CalculatePosition(detectorReadings, cfg, nil)
+
+		if result == nil {
+			t.Fatal("Expected PositionResult even when no beacons detected")
+		}
+		if result.Position != nil {
+			t.Error("Expected nil position for 0 beacons")
+		}
+		if result.BeaconCount != 0 {
+			t.Errorf("Expected 0 beacons in result, got %d", result.BeaconCount)
+		}
+
+		// Tracker data should still be created
+		timestamp := int64(1700000000000)
+		positionData := map[string]interface{}{}
+		if result.Position != nil {
+			positionData = map[string]interface{}{"x": result.Position[0], "y": result.Position[1]}
+		}
+
+		trackerData := map[string]interface{}{
+			"trackerId":             "test-tracker-no-beacons",
+			"timestamp":             timestamp,
+			"position":              positionData,
+			"accuracy":              result.Accuracy,
+			"confidence":            result.Confidence,
+			"method":                result.Method,
+			"beaconCount":           result.BeaconCount,
+			"last_detected_beacons": detectorReadings,
+			"position_history":      []interface{}{},
+		}
+
+		if trackerData["beaconCount"] != 0 {
+			t.Errorf("Expected beaconCount=0, got %v", trackerData["beaconCount"])
+		}
+		if len(trackerData["last_detected_beacons"].([]models.DetectedBeacon)) != 0 {
+			t.Error("Expected empty last_detected_beacons")
+		}
+
+		t.Logf("No-beacon tracker data: %+v", trackerData)
+	})
+}

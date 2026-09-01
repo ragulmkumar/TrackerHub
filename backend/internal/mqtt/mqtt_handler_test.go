@@ -3,8 +3,28 @@ package mqtt
 import (
 	"testing"
 
+	MQTT "github.com/eclipse/paho.mqtt.golang"
+
+	"trackerHub/backend/internal/config"
 	"trackerHub/backend/internal/models"
 )
+
+// mockMessage implements MQTT.Message for testing topic parsing
+type mockMessage struct {
+	topic   string
+	payload []byte
+}
+
+func (m *mockMessage) Topic() string     { return m.topic }
+func (m *mockMessage) Payload() []byte   { return m.payload }
+func (m *mockMessage) Qos() byte         { return 0 }
+func (m *mockMessage) Retained() bool    { return false }
+func (m *mockMessage) MessageID() uint16 { return 0 }
+func (m *mockMessage) Duplicate() bool   { return false }
+func (m *mockMessage) Ack()              {}
+
+// ensure mockMessage satisfies MQTT.Message at compile time
+var _ MQTT.Message = (*mockMessage)(nil)
 
 func TestParseTrackerReportParsesValidBeacons(t *testing.T) {
 	handler := &MQTTHandler{config: &models.MQTTServerConfig{}}
@@ -224,5 +244,173 @@ func TestMQTTErrorConstants(t *testing.T) {
 	}
 	if ErrEmptyTopic.Error() != "MQTT topic pattern is empty" {
 		t.Errorf("unexpected ErrEmptyTopic message: %s", ErrEmptyTopic.Error())
+	}
+}
+
+// --- Topic Parsing Tests for handleMQTTMessage ---
+
+func TestHandleMQTTMessageChirpStackV4Format(t *testing.T) {
+	// ChirpStack v4 integration topic: application/{appID}/device/{devEUI}/event/up
+	payload := `{"value":[{"mac":"c3:00:00:3e:7d:e0","rssi":"-69"}],"timestamp":1746521955000}`
+	msg := &mockMessage{
+		topic:   "application/8d765299-6bd2-4a9c-a841-7406785ff516/device/2CF7F1C0530004AD/event/up",
+		payload: []byte(payload),
+	}
+
+	var receivedReport *models.TrackerReport
+	handler := &MQTTHandler{
+		config:           &models.MQTTServerConfig{},
+		webUIConfigStore: nil, // Not needed for this test
+		runtimeConfig:    nil,
+		messageHandler:   func(report *models.TrackerReport, _ *models.WebUIConfig) { receivedReport = report },
+	}
+
+	handler.handleMQTTMessage(msg)
+
+	if receivedReport == nil {
+		t.Fatal("expected report to be received from ChirpStack v4 topic")
+	}
+	if receivedReport.TrackerID != "2CF7F1C0530004AD" {
+		t.Errorf("expected tracker ID 2CF7F1C0530004AD, got %s", receivedReport.TrackerID)
+	}
+	if len(receivedReport.DetectedBeacons) != 1 {
+		t.Errorf("expected 1 detected beacon, got %d", len(receivedReport.DetectedBeacons))
+	}
+	if receivedReport.DetectedBeacons[0].MACAddress != "C300003E7DE0" {
+		t.Errorf("expected MAC C300003E7DE0, got %s", receivedReport.DetectedBeacons[0].MACAddress)
+	}
+}
+
+func TestHandleMQTTMessageDeviceSensorDataFormat(t *testing.T) {
+	// device_sensor_data topic: /device_sensor_data/{appID}/{devEui}/{channelId}/{slotId}/{measurementId}
+	payload := `{"value":[{"mac":"c3:00:00:3e:7d:e0","rssi":"-69"}],"timestamp":1746521955000}`
+	msg := &mockMessage{
+		topic:   "/device_sensor_data/8d765299-6bd2-4a9c-a841-7406785ff516/2CF7F1C0530004AD/1/1/5002",
+		payload: []byte(payload),
+	}
+
+	var receivedReport *models.TrackerReport
+	handler := &MQTTHandler{
+		config:           &models.MQTTServerConfig{},
+		webUIConfigStore: nil,
+		runtimeConfig:    nil,
+		messageHandler:   func(report *models.TrackerReport, _ *models.WebUIConfig) { receivedReport = report },
+	}
+
+	handler.handleMQTTMessage(msg)
+
+	if receivedReport == nil {
+		t.Fatal("expected report to be received from device_sensor_data topic")
+	}
+	if receivedReport.TrackerID != "2CF7F1C0530004AD" {
+		t.Errorf("expected tracker ID 2CF7F1C0530004AD, got %s", receivedReport.TrackerID)
+	}
+}
+
+func TestHandleMQTTMessageDeviceSensorDataIgnoresNonBLE5002(t *testing.T) {
+	// device_sensor_data with measurementId != 5002 should be ignored
+	payload := `{"value":[{"mac":"c3:00:00:3e:7d:e0","rssi":"-69"}],"timestamp":1746521955000}`
+	msg := &mockMessage{
+		topic:   "/device_sensor_data/8d765299-6bd2-4a9c-a841-7406785ff516/2CF7F1C0530004AD/1/1/3000",
+		payload: []byte(payload),
+	}
+
+	var receivedReport *models.TrackerReport
+	handler := &MQTTHandler{
+		config:         &models.MQTTServerConfig{},
+		messageHandler: func(report *models.TrackerReport, _ *models.WebUIConfig) { receivedReport = report },
+	}
+
+	handler.handleMQTTMessage(msg)
+
+	if receivedReport != nil {
+		t.Error("expected report to be ignored for non-5002 measurement ID")
+	}
+}
+
+func TestHandleMQTTMessageChirpStackV4NoDeviceSegment(t *testing.T) {
+	// Malformed topic without "device" segment should be ignored
+	msg := &mockMessage{
+		topic:   "application/8d765299/event/up",
+		payload: []byte(`{"value":[]}`),
+	}
+
+	var receivedReport *models.TrackerReport
+	handler := &MQTTHandler{
+		config:         &models.MQTTServerConfig{},
+		messageHandler: func(report *models.TrackerReport, _ *models.WebUIConfig) { receivedReport = report },
+	}
+
+	handler.handleMQTTMessage(msg)
+
+	if receivedReport != nil {
+		t.Error("expected no report for malformed topic without device segment")
+	}
+}
+
+func TestHandleMQTTMessageChirpStackV4AccessControl(t *testing.T) {
+	// ChirpStack v4 topic with access control enabled
+	payload := `{"value":[{"mac":"c3:00:00:3e:7d:e0","rssi":"-69"}],"timestamp":1746521955000}`
+	msg := &mockMessage{
+		topic:   "application/8d765299-6bd2-4a9c-a841-7406785ff516/device/2CF7F1C0530004AD/event/up",
+		payload: []byte(payload),
+	}
+
+	var receivedReport *models.TrackerReport
+	rtConfig := &models.ServerRuntimeConfig{
+		TrackerAccessControl: models.TrackerAccessControlConfig{
+			Enabled:         true,
+			AllowAll:        false,
+			AllowedTrackers: []string{"AAAAAAAABBBBBBBB"},
+		},
+	}
+	rtStore := &config.RuntimeConfigStore{}
+	rtStore.Set(rtConfig)
+
+	handler := &MQTTHandler{
+		config:         &models.MQTTServerConfig{},
+		runtimeConfig:  rtStore,
+		messageHandler: func(report *models.TrackerReport, _ *models.WebUIConfig) { receivedReport = report },
+	}
+
+	handler.handleMQTTMessage(msg)
+
+	if receivedReport != nil {
+		t.Error("expected report to be blocked by access control for unlisted tracker")
+	}
+}
+
+func TestHandleMQTTMessageChirpStackV4AccessControlAllowed(t *testing.T) {
+	// ChirpStack v4 topic with access control - tracker IS allowed
+	payload := `{"value":[{"mac":"c3:00:00:3e:7d:e0","rssi":"-69"}],"timestamp":1746521955000}`
+	msg := &mockMessage{
+		topic:   "application/8d765299-6bd2-4a9c-a841-7406785ff516/device/2CF7F1C0530004AD/event/up",
+		payload: []byte(payload),
+	}
+
+	var receivedReport *models.TrackerReport
+	rtConfig := &models.ServerRuntimeConfig{
+		TrackerAccessControl: models.TrackerAccessControlConfig{
+			Enabled:         true,
+			AllowAll:        false,
+			AllowedTrackers: []string{"2CF7F1C0530004AD"},
+		},
+	}
+	rtStore := &config.RuntimeConfigStore{}
+	rtStore.Set(rtConfig)
+
+	handler := &MQTTHandler{
+		config:         &models.MQTTServerConfig{},
+		runtimeConfig:  rtStore,
+		messageHandler: func(report *models.TrackerReport, _ *models.WebUIConfig) { receivedReport = report },
+	}
+
+	handler.handleMQTTMessage(msg)
+
+	if receivedReport == nil {
+		t.Fatal("expected report to be allowed by access control for listed tracker")
+	}
+	if receivedReport.TrackerID != "2CF7F1C0530004AD" {
+		t.Errorf("expected tracker ID 2CF7F1C0530004AD, got %s", receivedReport.TrackerID)
 	}
 }

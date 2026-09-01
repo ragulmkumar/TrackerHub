@@ -124,50 +124,76 @@ func main() {
 			return
 		}
 
-		posResult := positioningService.CalculatePosition(report.DetectedBeacons, webUIConfig, nil)
-		if posResult == nil || posResult.Position == nil {
-			return
-		}
-
 		timestamp := time.Now().UnixMilli()
 
-		// ── Kalman filtering ──────────────────────────────────────────────
-		// Apply a 2-D constant-velocity Kalman filter per tracker.
-		// Uses processVariance / measurementVariance from the runtime config.
-		// Config changes (variance values) trigger filter reinitialization.
-		runtimeCfg := runtimeConfigStore.Get()
-		kalmanPV := 1.0
-		kalmanMV := 10.0
-		if runtimeCfg != nil {
-			kalmanPV = runtimeCfg.Kalman.ProcessVariance
-			kalmanMV = runtimeCfg.Kalman.MeasurementVariance
+		// Always create/update tracker state for any valid report.
+		// This matches the reference IndoorPositioning behavior where a tracker
+		// appears in the UI as soon as it sends data, even if position cannot be calculated.
+		posResult := positioningService.CalculatePosition(report.DetectedBeacons, webUIConfig, nil)
+
+		var accuracy *float64
+		var filteredX, filteredY *float64
+		var method string
+		var confidence float64
+		var beaconCount int
+
+		if posResult != nil && posResult.Position != nil {
+			// ── Kalman filtering ──────────────────────────────────────────────
+			// Apply a 2-D constant-velocity Kalman filter per tracker.
+			// Uses processVariance / measurementVariance from the runtime config.
+			// Config changes (variance values) trigger filter reinitialization.
+			runtimeCfg := runtimeConfigStore.Get()
+			kalmanPV := 1.0
+			kalmanMV := 10.0
+			if runtimeCfg != nil {
+				kalmanPV = runtimeCfg.Kalman.ProcessVariance
+				kalmanMV = runtimeCfg.Kalman.MeasurementVariance
+			}
+
+			filtered := kalmanStore.Apply(
+				report.TrackerID,
+				posResult.Position,
+				timestamp,
+				kalmanPV,
+				kalmanMV,
+			)
+
+			// The helper guarantees a non-nil result when posResult.Position is non-nil.
+			fx := filtered[0]
+			fy := filtered[1]
+			filteredX = &fx
+			filteredY = &fy
+			// ── end Kalman filtering ──────────────────────────────────────────
+
+			trackerCoords := []float64{fx, fy}
+			acc := posResult.Accuracy
+			accuracy = &acc
+			method = posResult.Method
+			confidence = posResult.Confidence
+			beaconCount = posResult.BeaconCount
+			apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, accuracy)
+		} else {
+			// Position calculation failed (e.g., <3 beacons, no matching beacons, no config).
+			// Still store the tracker state with detected beacons so it appears in UI as "Position pending".
+			apiHandler.UpsertTrackerStateWithData(report.TrackerID, nil, timestamp, report.DetectedBeacons, nil)
 		}
 
-		filtered := kalmanStore.Apply(
-			report.TrackerID,
-			posResult.Position,
-			timestamp,
-			kalmanPV,
-			kalmanMV,
-		)
-
-		// The helper guarantees a non-nil result when posResult.Position is non-nil.
-		filteredX := filtered[0]
-		filteredY := filtered[1]
-		// ── end Kalman filtering ──────────────────────────────────────────
-
-		trackerCoords := []float64{filteredX, filteredY}
-		accuracy := posResult.Accuracy
-		apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, &accuracy)
+		// Build tracker data for WebSocket - position may be nil if positioning failed
+		var positionData map[string]interface{}
+		if filteredX != nil && filteredY != nil {
+			positionData = map[string]interface{}{"x": *filteredX, "y": *filteredY}
+		} else {
+			positionData = nil // Will serialize to null in JSON
+		}
 
 		trackerData := map[string]interface{}{
 			"trackerId":             report.TrackerID,
 			"timestamp":             timestamp,
-			"position":              map[string]float64{"x": filteredX, "y": filteredY},
-			"accuracy":              posResult.Accuracy,
-			"confidence":            posResult.Confidence,
-			"method":                posResult.Method,
-			"beaconCount":           posResult.BeaconCount,
+			"position":              positionData,
+			"accuracy":              accuracy,
+			"confidence":            confidence,
+			"method":                method,
+			"beaconCount":           beaconCount,
 			"last_detected_beacons": report.DetectedBeacons,
 			"position_history":      apiHandler.GetTrackerSnapshot()[report.TrackerID].PositionHistory,
 		}
