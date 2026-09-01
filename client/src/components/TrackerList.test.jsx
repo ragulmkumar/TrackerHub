@@ -3,13 +3,9 @@ import { render, screen } from "@testing-library/react";
 import TrackerList from "./TrackerList";
 
 describe("TrackerList", () => {
-  it("renders empty state when no trackers", () => {
+  it("renders a concise empty state when no trackers", () => {
     render(<TrackerList trackers={[]} />);
-    expect(
-      screen.getByText(
-        "No trackers connected yet. Waiting for live updates from the WebSocket feed.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("No trackers connected yet.")).toBeInTheDocument();
   });
 
   it("shows tracker count in badge", () => {

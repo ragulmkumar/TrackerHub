@@ -140,7 +140,7 @@ export default function TrackerModePage() {
 
   const mqttStatusMessage = useMemo(() => {
     if (mqttEnabled === false) {
-      return "MQTT is disabled in runtime settings.";
+      return "MQTT disabled in runtime settings.";
     }
     if (wsStatus !== "connected") {
       return "Waiting for WebSocket connection.";
@@ -162,35 +162,31 @@ export default function TrackerModePage() {
 
   return (
     <div
-      className="min-h-screen px-4 py-8"
+      className="min-h-screen px-3 py-6 sm:px-4 xl:px-6"
       style={{
         background: `linear-gradient(135deg, ${colorPalette.background.default} 0%, ${colorPalette.background.paper} 100%)`,
       }}
     >
-      <div className="mx-auto grid max-w-7xl gap-8">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mx-auto grid max-w-7xl gap-5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
               Live Tracker Mode
             </p>
-            <h1 className="mt-3 text-3xl font-semibold text-slate-900">
+            <h1 className="mt-2 text-2xl font-semibold text-slate-900 sm:text-3xl">
               Real-time position monitoring
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">
-              This workspace uses the live WebSocket feed as the source of truth
-              for tracker positions, MQTT connectivity and map rendering.
-            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               to="/dashboard"
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300"
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300"
             >
               Dashboard
             </Link>
             <Link
               to="/configuration"
-              className="rounded-2xl border border-slate-200 bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-900"
+              className="rounded-xl border border-slate-200 bg-slate-950 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-900"
             >
               Configuration
             </Link>
@@ -198,75 +194,77 @@ export default function TrackerModePage() {
         </div>
 
         {error && (
-          <div className="rounded-3xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">
+          <div className="rounded-2xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
             {error}
           </div>
         )}
 
-        <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl border border-slate-700 bg-slate-950/80 p-5 shadow-lg">
-                <p className="text-sm uppercase tracking-[0.25em] text-slate-400">
-                  WebSocket
-                </p>
-                <div className="mt-4 flex items-center gap-3">
+              <div className="rounded-2xl border border-slate-700 bg-slate-950/80 p-4 shadow-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">
+                    WebSocket
+                  </p>
                   <span
-                    className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${getStatusBadge(wsStatus)}`}
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusBadge(wsStatus)}`}
                   >
                     {wsStatus}
                   </span>
-                  <p className="text-sm text-slate-300">
-                    {wsStatus === "connected"
-                      ? "Connected to live tracker updates"
-                      : wsStatus === "connecting"
-                        ? "Establishing connection..."
-                        : wsStatus === "offline"
-                          ? "Disconnected from WebSocket"
-                          : wsStatus === "error"
-                            ? "Connection error. Reconnecting..."
-                            : "Waiting for connection..."}
-                  </p>
                 </div>
+                <p className="mt-3 text-sm text-slate-300">
+                  {wsStatus === "connected"
+                    ? "Connected to live tracker updates"
+                    : wsStatus === "connecting"
+                      ? "Establishing connection..."
+                      : wsStatus === "offline"
+                        ? "Disconnected from WebSocket"
+                        : wsStatus === "error"
+                          ? "Connection error. Reconnecting..."
+                          : "Waiting for connection..."}
+                </p>
               </div>
 
-              <div className="rounded-3xl border border-slate-700 bg-slate-950/80 p-5 shadow-lg">
-                <p className="text-sm uppercase tracking-[0.25em] text-slate-400">
-                  MQTT status
-                </p>
-                <div className="mt-4 flex items-center gap-3">
+              <div className="rounded-2xl border border-slate-700 bg-slate-950/80 p-4 shadow-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">
+                    MQTT status
+                  </p>
                   <span
-                    className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${getStatusBadge(effectiveMqttStatus)}`}
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusBadge(effectiveMqttStatus)}`}
                   >
                     {effectiveMqttStatus}
                   </span>
-                  <p className="text-sm text-slate-300">{mqttStatusMessage}</p>
                 </div>
+                <p className="mt-3 text-sm text-slate-300">
+                  {mqttStatusMessage}
+                </p>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-700 bg-slate-950/80 p-5 shadow-lg">
-              <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="rounded-2xl border border-slate-700 bg-slate-950/80 p-4 shadow-lg">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.25em] text-slate-400">
+                  <p className="text-[10px] uppercase tracking-[0.22em] text-slate-400">
                     Map preview
                   </p>
-                  <h2 className="mt-2 text-xl font-semibold text-slate-100">
+                  <h2 className="mt-1 text-lg font-semibold text-slate-100">
                     Tracker map view
                   </h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowTrails((current) => !current)}
-                  className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-slate-800"
                 >
                   {showTrails ? "Hide trails" : "Show trails"}
                 </button>
               </div>
 
-              <div className="mt-4 min-h-115 rounded-3xl border border-slate-700 bg-slate-950/90 p-4">
+              <div className="min-h-65 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950/90">
                 {loadingConfig ? (
-                  <div className="flex h-full items-center justify-center rounded-3xl bg-slate-900/80 text-slate-400">
+                  <div className="flex h-full min-h-65 items-center justify-center text-sm text-slate-400">
                     Loading configured map...
                   </div>
                 ) : (
@@ -282,11 +280,11 @@ export default function TrackerModePage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl border border-slate-700 bg-slate-950/80 p-5 shadow-lg">
-                <p className="text-sm uppercase tracking-[0.25em] text-slate-400">
+              <div className="rounded-2xl border border-slate-700 bg-slate-950/80 p-4 shadow-lg">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">
                   Active trackers
                 </p>
-                <p className="mt-3 text-4xl font-semibold text-slate-100">
+                <p className="mt-2 text-3xl font-semibold text-slate-100">
                   {activeTrackers}
                 </p>
                 <p className="mt-2 text-sm text-slate-400">
@@ -298,16 +296,16 @@ export default function TrackerModePage() {
                 </p>
               </div>
 
-              <div className="rounded-3xl border border-slate-700 bg-slate-950/80 p-5 shadow-lg">
-                <p className="text-sm uppercase tracking-[0.25em] text-slate-400">
+              <div className="rounded-2xl border border-slate-700 bg-slate-950/80 p-4 shadow-lg">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">
                   Map configuration
                 </p>
-                <p className="mt-3 text-lg font-semibold text-slate-100">
+                <p className="mt-2 text-base font-semibold text-slate-100">
                   {mapConfig?.map?.name || "Unnamed map"}
                 </p>
                 <p className="mt-2 text-sm text-slate-400">
                   {mapConfig?.map
-                    ? `${mapConfig.map.width}m × ${mapConfig.map.height}m with ${mapConfig.beacons?.length ?? 0} beacon${mapConfig.beacons?.length === 1 ? "" : "s"}`
+                    ? `${mapConfig.map.width}m × ${mapConfig.map.height}m • ${mapConfig.beacons?.length ?? 0} beacon${mapConfig.beacons?.length === 1 ? "" : "s"}`
                     : "No configured map data available."}
                 </p>
               </div>

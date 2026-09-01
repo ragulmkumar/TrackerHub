@@ -303,7 +303,6 @@ const Dashboard = () => {
   const [mqttStatus, setMqttStatus] = useState("disconnected");
   const [showTrails, setShowTrails] = useState(true);
 
-  /* Clock for the header */
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -324,7 +323,6 @@ const Dashboard = () => {
       second: "2-digit",
     });
 
-  /* Load the configured map/beacons and server runtime settings */
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -350,7 +348,6 @@ const Dashboard = () => {
     };
   }, []);
 
-  /* Live WebSocket feed for tracker positions + connection status */
   useEffect(() => {
     websocketService.connect();
     const listener = ({
@@ -370,7 +367,6 @@ const Dashboard = () => {
     };
   }, []);
 
-  /* Gate tracker updates on whether MQTT is actually enabled */
   const mqttEnabled = runtimeConfig?.mqtt?.enabled;
   useEffect(() => {
     if (runtimeConfig == null) {
@@ -384,7 +380,6 @@ const Dashboard = () => {
     }
   }, [runtimeConfig, mqttEnabled]);
 
-  /* Derived metrics — all from live/config data, nothing hardcoded */
   const totalTrackers = trackers.length;
   const locatedTrackers = trackers.filter(
     (t) => t.position?.x != null && t.position?.y != null,
@@ -420,43 +415,24 @@ const Dashboard = () => {
 
   return (
     <div
-      className="min-h-screen px-4 py-8 relative overflow-hidden"
+      className="min-h-screen px-3 py-5 sm:px-4 lg:px-6"
       style={{
         background: `linear-gradient(135deg, ${colorPalette.background.default} 0%, ${colorPalette.background.paper} 100%)`,
       }}
     >
-      {/* Ambient background orbs */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div
-          className="absolute top-[-10%] right-[-5%] h-125 w-125 rounded-full blur-3xl animate-float"
-          style={{
-            background: `radial-gradient(circle, ${colorPalette.primary.light}30, transparent 70%)`,
-            animationDuration: "15s",
-          }}
-        />
-        <div
-          className="absolute bottom-[-10%] left-[-5%] h-112.5 w-112.5 rounded-full blur-3xl animate-float-delayed"
-          style={{
-            background: `radial-gradient(circle, ${colorPalette.secondary.light}25, transparent 70%)`,
-            animationDuration: "18s",
-          }}
-        />
-      </div>
-
-      <div className="relative mx-auto max-w-7xl space-y-6">
-        {/* ------------------------------------------------ Header */}
-        <GlassCard>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-4">
+      <div className="mx-auto max-w-7xl space-y-5">
+        <GlassCard className="p-4 sm:p-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-start gap-3">
               <div
-                className="flex h-12 w-12 items-center justify-center rounded-2xl"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl"
                 style={{
                   background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
                   boxShadow: `0 6px 20px ${colorPalette.primary.main}35`,
                 }}
               >
                 <svg
-                  className="h-6 w-6 text-white"
+                  className="h-5 w-5 text-white"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -471,13 +447,13 @@ const Dashboard = () => {
               </div>
               <div>
                 <p
-                  className="text-xs font-semibold uppercase tracking-[0.3em]"
+                  className="text-[10px] font-semibold uppercase tracking-[0.28em]"
                   style={{ color: colorPalette.primary.main }}
                 >
                   Indoor Positioning Overview
                 </p>
                 <h1
-                  className="text-2xl font-bold md:text-3xl"
+                  className="mt-1 text-xl font-bold sm:text-2xl"
                   style={{ color: colorPalette.text.primary }}
                 >
                   Welcome back,{" "}
@@ -485,30 +461,24 @@ const Dashboard = () => {
                     {user || "Admin"}
                   </span>
                 </h1>
-                <div className="mt-1 flex items-center gap-2">
-                  <p
-                    className="text-sm"
-                    style={{ color: colorPalette.text.secondary }}
-                  >
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                  <p style={{ color: colorPalette.text.secondary }}>
                     {formatDate(currentTime)}
                   </p>
                   <span
                     className="h-1 w-1 rounded-full"
                     style={{ backgroundColor: colorPalette.text.disabled }}
                   />
-                  <p
-                    className="text-sm font-medium"
-                    style={{ color: colorPalette.primary.main }}
-                  >
+                  <p style={{ color: colorPalette.primary.main }}>
                     {formatTime(currentTime)}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <div
-                className="hidden items-center gap-2 rounded-xl px-3 py-2 sm:flex"
+                className="hidden items-center gap-2 rounded-xl px-2.5 py-1.5 sm:flex"
                 style={{
                   backgroundColor: `${colorPalette.success.main}12`,
                   border: `1px solid ${colorPalette.success.main}24`,
@@ -519,7 +489,7 @@ const Dashboard = () => {
                   style={{ backgroundColor: colorPalette.success.main }}
                 />
                 <span
-                  className="text-xs font-medium"
+                  className="text-[11px] font-medium"
                   style={{ color: colorPalette.success.dark }}
                 >
                   Positioning engine{" "}
@@ -528,7 +498,7 @@ const Dashboard = () => {
               </div>
               <Link
                 to="/monitor"
-                className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95"
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition hover:opacity-95"
                 style={{
                   background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
                   color: colorPalette.primary.contrastText,
@@ -540,7 +510,7 @@ const Dashboard = () => {
               </Link>
               <Link
                 to="/configuration"
-                className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95"
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition hover:opacity-95"
                 style={{
                   background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
                   color: colorPalette.primary.contrastText,
@@ -552,7 +522,7 @@ const Dashboard = () => {
               </Link>
               <button
                 onClick={logout}
-                className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95"
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition hover:opacity-95"
                 style={{
                   background: `linear-gradient(135deg, ${colorPalette.error.main}, ${colorPalette.error.dark})`,
                   color: colorPalette.error.contrastText,
@@ -576,7 +546,6 @@ const Dashboard = () => {
           </div>
         </GlassCard>
 
-        {/* ------------------------------------------------ Error banner */}
         {error && (
           <div
             className="rounded-2xl border px-4 py-3 text-sm"
@@ -590,8 +559,7 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* ------------------------------------------------ Stat cards */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
           <StatCard
             label="Total Trackers"
             value={totalTrackers}
@@ -648,11 +616,9 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* ------------------------------------------------ Live tracking */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Live map */}
-          <GlassCard className="lg:col-span-2">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]">
+          <GlassCard className="p-4 sm:p-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <SectionTitle
                 title="Live position map"
                 subtitle={
@@ -661,12 +627,12 @@ const Dashboard = () => {
                     : "Configured beacons and live tracker positions"
                 }
               />
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <StatusPill status={wsStatus} />
                 <button
                   type="button"
                   onClick={() => setShowTrails((cur) => !cur)}
-                  className="rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95"
+                  className="rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:opacity-95"
                   style={{
                     backgroundColor: "rgba(255,255,255,0.7)",
                     color: colorPalette.text.primary,
@@ -677,9 +643,9 @@ const Dashboard = () => {
                 </button>
               </div>
             </div>
-            <div className="overflow-hidden rounded-3xl border border-slate-700">
+            <div className="overflow-hidden rounded-2xl border border-slate-700">
               {loading ? (
-                <div className="flex h-96 items-center justify-center rounded-3xl bg-slate-950/80 text-slate-400">
+                <div className="flex h-80 items-center justify-center text-sm text-slate-400 sm:h-96">
                   Loading configured map...
                 </div>
               ) : (
@@ -694,13 +660,10 @@ const Dashboard = () => {
             </div>
           </GlassCard>
 
-          {/* Live tracker list */}
           <TrackerList trackers={trackers} />
         </div>
 
-        {/* ------------------------------------------------ Config panels */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Positioning engine */}
+        <div className="grid gap-4 lg:grid-cols-3">
           <GlassCard>
             <div className="mb-4 flex items-center gap-3">
               <div
@@ -752,9 +715,8 @@ const Dashboard = () => {
             </div>
           </GlassCard>
 
-          {/* MQTT & connectivity */}
           <GlassCard>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div
                   className="flex h-10 w-10 items-center justify-center rounded-xl"
@@ -806,7 +768,6 @@ const Dashboard = () => {
             </div>
           </GlassCard>
 
-          {/* Quick actions */}
           <GlassCard>
             <div className="mb-4 flex items-center gap-3">
               <div
@@ -896,40 +857,6 @@ const Dashboard = () => {
           </GlassCard>
         </div>
       </div>
-
-      {/* Custom animations */}
-      <style>{`
-        @keyframes float {
-          0%,
-          100% {
-            transform: translate(0, 0) scale(1);
-          }
-          33% {
-            transform: translate(30px, -30px) scale(1.1);
-          }
-          66% {
-            transform: translate(-20px, 20px) scale(0.9);
-          }
-        }
-        @keyframes float-delayed {
-          0%,
-          100% {
-            transform: translate(0, 0) scale(1);
-          }
-          33% {
-            transform: translate(-30px, 20px) scale(0.9);
-          }
-          66% {
-            transform: translate(20px, -30px) scale(1.1);
-          }
-        }
-        .animate-float {
-          animation: float 15s infinite ease-in-out;
-        }
-        .animate-float-delayed {
-          animation: float-delayed 18s infinite ease-in-out;
-        }
-      `}</style>
     </div>
   );
 };

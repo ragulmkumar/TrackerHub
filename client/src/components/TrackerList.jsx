@@ -16,37 +16,32 @@ function getStrongestRSSI(beacons) {
 
 export default function TrackerList({ trackers = [] }) {
   return (
-    <div className="rounded-3xl border border-slate-700 bg-slate-950/80 p-5 shadow-lg">
-      <div className="mb-5 flex items-center justify-between gap-4">
+    <div className="rounded-2xl border border-slate-700 bg-slate-950/80 p-4 shadow-lg">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-slate-100">
+          <h2 className="text-lg font-semibold text-slate-100">
             Tracker details
           </h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Live tracker positions, beacon counts, and the freshest signal
-            information.
-          </p>
         </div>
-        <span className="rounded-full bg-slate-800 px-3 py-1 text-xs uppercase tracking-[0.24em] text-slate-300">
+        <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">
           {trackers.length} active
         </span>
       </div>
 
       {trackers.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/70 p-6 text-center text-sm text-slate-400">
-          No trackers connected yet. Waiting for live updates from the WebSocket
-          feed.
+        <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/70 p-5 text-sm text-slate-400">
+          No trackers connected yet.
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {trackers.map((tracker) => (
             <div
               key={tracker.trackerId}
-              className="rounded-3xl border border-slate-700 bg-slate-900/75 p-4"
+              className="rounded-2xl border border-slate-700 bg-slate-900/75 p-3"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.2em] text-sky-300">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
                     {tracker.trackerId}
                   </p>
                   <p className="mt-1 text-sm text-slate-300">
@@ -56,7 +51,7 @@ export default function TrackerList({ trackers = [] }) {
                   </p>
                 </div>
                 <span
-                  className="rounded-full px-3 py-1 text-xs font-semibold"
+                  className="rounded-full px-2.5 py-1 text-[10px] font-semibold"
                   style={{
                     backgroundColor:
                       tracker.accuracy != null
@@ -75,25 +70,25 @@ export default function TrackerList({ trackers = [] }) {
                 </span>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-slate-950/90 p-3">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-xl bg-slate-950/90 p-2.5">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
                     Last update
                   </p>
-                  <p className="mt-2 text-sm text-slate-100">
+                  <p className="mt-1 text-sm text-slate-100">
                     {formatTimestamp(
                       tracker.timestamp || tracker.lastUpdateTime,
                     )}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-slate-950/90 p-3">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                <div className="rounded-xl bg-slate-950/90 p-2.5">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
                     Beacons seen
                   </p>
-                  <p className="mt-2 text-sm text-slate-100">
+                  <p className="mt-1 text-sm text-slate-100">
                     {tracker.lastDetectedBeacons?.length ?? 0}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-[11px] text-slate-500">
                     Strongest RSSI:{" "}
                     {getStrongestRSSI(tracker.lastDetectedBeacons)}
                   </p>
