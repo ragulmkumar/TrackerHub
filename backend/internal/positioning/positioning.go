@@ -20,6 +20,9 @@ func CalculateDistance(RSSI int, txPower int, n float64) float64 {
 	if RSSI == 0 {
 		return -1.0 // Unable to determine distance
 	}
+	if n <= 0 || math.IsNaN(n) || math.IsInf(n, 0) {
+		n = 2.0
+	}
 	// Formula: distance = 10^((txPower - RSSI) / (10 * n))
 	exponent := float64(txPower-RSSI) / (10 * n)
 	if exponent > 10 { // Avoid potential overflow for very weak signals
@@ -201,6 +204,9 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 
 	var beaconsWithCoordsDist [][3]float64
 	n := webUIConfig.Settings.SignalPropagationFactor
+	if n <= 0 || math.IsNaN(n) || math.IsInf(n, 0) {
+		n = 2.0
+	}
 
 	// Create a map of beacons for quick lookup by MAC address
 	beaconMap := make(map[string]*models.WebUIBeaconConfig)

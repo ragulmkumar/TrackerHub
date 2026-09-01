@@ -177,6 +177,7 @@ func (h *MQTTHandler) handleMQTTMessage(msg MQTT.Message) {
 		}
 	}
 
+	deviceEUI = models.NormalizeTrackerID(deviceEUI)
 	if deviceEUI == "" {
 		return
 	}

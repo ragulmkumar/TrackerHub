@@ -311,7 +311,9 @@ func (h *APIHandler) GetTrackers(c *gin.Context) {
 
 	trackers := make(map[string]models.TrackerState, len(h.trackerStates))
 	for id, state := range h.trackerStates {
-		trackers[id] = state
+		normalizedID := models.NormalizeTrackerID(id)
+		state.TrackerID = models.NormalizeTrackerID(state.TrackerID)
+		trackers[normalizedID] = state
 	}
 	c.JSON(http.StatusOK, trackers)
 }
@@ -323,8 +325,9 @@ func (h *APIHandler) GetTrackerSnapshot() map[string]models.TrackerLiveState {
 
 	snapshot := make(map[string]models.TrackerLiveState, len(h.trackerStates))
 	for id, state := range h.trackerStates {
+		normalizedID := models.NormalizeTrackerID(id)
 		trackerSnapshot := models.TrackerLiveState{
-			TrackerID:           id,
+			TrackerID:           models.NormalizeTrackerID(state.TrackerID),
 			Timestamp:           state.LastUpdateTime,
 			Accuracy:            state.Accuracy,
 			LastDetectedBeacons: state.LastDetectedBeacons,
@@ -333,7 +336,7 @@ func (h *APIHandler) GetTrackerSnapshot() map[string]models.TrackerLiveState {
 		if state.X != nil && state.Y != nil {
 			trackerSnapshot.Position = &models.TrackerPosition{X: *state.X, Y: *state.Y}
 		}
-		snapshot[id] = trackerSnapshot
+		snapshot[normalizedID] = trackerSnapshot
 	}
 	return snapshot
 }
@@ -373,6 +376,7 @@ func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []
 	h.trackerMu.Lock()
 	defer h.trackerMu.Unlock()
 
+	trackerID = models.NormalizeTrackerID(trackerID)
 	state := h.trackerStates[trackerID]
 	state.TrackerID = trackerID
 	state.LastUpdateTime = timestamp
@@ -394,6 +398,7 @@ func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []
 
 // IsTrackerAllowed checks whether a tracker ID is accepted by the runtime access policy.
 func (h *APIHandler) IsTrackerAllowed(trackerID string) bool {
+	normalizedTrackerID := models.NormalizeTrackerID(trackerID)
 	runtimeConfig := h.runtimeConfigStore.Get()
 	if runtimeConfig == nil {
 		return true
@@ -406,7 +411,7 @@ func (h *APIHandler) IsTrackerAllowed(trackerID string) bool {
 		return true
 	}
 	for _, allowed := range policy.AllowedTrackers {
-		if allowed == trackerID {
+		if models.NormalizeTrackerID(allowed) == normalizedTrackerID {
 			return true
 		}
 	}

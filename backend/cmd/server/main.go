@@ -126,6 +126,9 @@ func main() {
 
 		timestamp := time.Now().UnixMilli()
 
+		enrichedBeacons := models.EnrichDetectedBeaconsWithConfig(report.DetectedBeacons, webUIConfig)
+		report.DetectedBeacons = enrichedBeacons
+
 		// Always create/update tracker state for any valid report.
 		// This matches the reference IndoorPositioning behavior where a tracker
 		// appears in the UI as soon as it sends data, even if position cannot be calculated.

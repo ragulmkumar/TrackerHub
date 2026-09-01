@@ -122,6 +122,46 @@ func TestParseTrackerReportParsesSenseCAPPayloadWithNumericRSSI(t *testing.T) {
 	}
 }
 
+func TestEnrichDetectedBeaconsWithConfigAddsMetadataAndDistance(t *testing.T) {
+	config := &models.WebUIConfig{
+		Beacons: []models.WebUIBeaconConfig{
+			{MACAddress: "C30000665694", X: 10.35, Y: 64.46, TXPower: -59, DisplayName: "BC01"},
+			{MACAddress: "C300006656B3", X: 63.79, Y: 66.95, TXPower: -59, DisplayName: "BC04"},
+		},
+		Settings: models.WebUISettings{SignalPropagationFactor: 2.0},
+	}
+
+	beacons := []models.DetectedBeacon{
+		{MACAddress: "C3:00:00:66:56:94", RSSI: -97, Major: intPtr(1), Minor: intPtr(2)},
+		{MACAddress: "C3:00:00:66:56:B3", RSSI: -96},
+	}
+
+	enriched := models.EnrichDetectedBeaconsWithConfig(beacons, config)
+	if len(enriched) != 2 {
+		t.Fatalf("expected 2 enriched beacons, got %d", len(enriched))
+	}
+	if enriched[0].Name != "BC01" {
+		t.Fatalf("expected name BC01, got %q", enriched[0].Name)
+	}
+	if enriched[0].ConfiguredX == nil || *enriched[0].ConfiguredX != 10.35 {
+		t.Fatalf("expected configured_x 10.35, got %#v", enriched[0].ConfiguredX)
+	}
+	if enriched[0].ConfiguredY == nil || *enriched[0].ConfiguredY != 64.46 {
+		t.Fatalf("expected configured_y 64.46, got %#v", enriched[0].ConfiguredY)
+	}
+	if enriched[0].Distance == nil || *enriched[0].Distance <= 0 {
+		t.Fatalf("expected positive dis distance, got %#v", enriched[0].Distance)
+	}
+	if enriched[0].Major == nil || *enriched[0].Major != 1 {
+		t.Fatalf("expected Major 1, got %#v", enriched[0].Major)
+	}
+	if enriched[0].Minor == nil || *enriched[0].Minor != 2 {
+		t.Fatalf("expected Minor 2, got %#v", enriched[0].Minor)
+	}
+}
+
+func intPtr(v int) *int { return &v }
+
 func TestParseTrackerReportHandlesInvalidJSON(t *testing.T) {
 	handler := &MQTTHandler{config: &models.MQTTServerConfig{}}
 

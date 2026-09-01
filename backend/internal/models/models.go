@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 )
@@ -29,6 +30,20 @@ func NormalizeMAC(mac string) (string, error) {
 	return normalized, nil
 }
 
+// NormalizeTrackerID normalizes EUI-style tracker IDs to the canonical format used
+// by the reference IndoorPositioning project, while preserving non-EUI tracker names.
+func NormalizeTrackerID(trackerID string) string {
+	if trackerID == "" {
+		return ""
+	}
+
+	trimmed := strings.TrimSpace(trackerID)
+	if regexp.MustCompile(`^[A-Fa-f0-9]{8,16}$`).MatchString(trimmed) {
+		return strings.ToUpper(trimmed)
+	}
+	return trimmed
+}
+
 // KalmanFilterState stores per-tracker Kalman filter state and config snapshot
 // for detecting configuration changes.
 type KalmanFilterState struct {
@@ -40,10 +55,66 @@ type KalmanFilterState struct {
 
 // DetectedBeacon represents a BLE beacon detected by a tracker
 type DetectedBeacon struct {
-	MACAddress string `json:"macAddress" validate:"required,len=12"`
-	Major      *int   `json:"major,omitempty"`
-	Minor      *int   `json:"minor,omitempty"`
-	RSSI       int    `json:"rssi" validate:"required,gte=-128,lte=20"`
+	MACAddress    string   `json:"macAddress" validate:"required,len=12"`
+	Major         *int     `json:"major,omitempty"`
+	Minor         *int     `json:"minor,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	RSSI          int      `json:"rssi" validate:"required,gte=-128,lte=20"`
+	TXPower       *int     `json:"txPower,omitempty"`
+	ConfiguredX   *float64 `json:"configured_x,omitempty"`
+	ConfiguredY   *float64 `json:"configured_y,omitempty"`
+	Distance      *float64 `json:"dis,omitempty"`
+	DistanceAlias *float64 `json:"distance,omitempty"`
+}
+
+// EnrichDetectedBeaconsWithConfig attaches configured beacon metadata and computed distance
+// to the raw MQTT sighting data so the public API matches the IndoorPositioning reference.
+func EnrichDetectedBeaconsWithConfig(beacons []DetectedBeacon, config *WebUIConfig) []DetectedBeacon {
+	if len(beacons) == 0 || config == nil {
+		return beacons
+	}
+
+	lookup := make(map[string]WebUIBeaconConfig, len(config.Beacons))
+	for _, beacon := range config.Beacons {
+		if beacon.MACAddress == "" {
+			continue
+		}
+		normalizedMAC, err := NormalizeMAC(beacon.MACAddress)
+		if err != nil {
+			continue
+		}
+		lookup[normalizedMAC] = beacon
+	}
+
+	propagationFactor := config.Settings.SignalPropagationFactor
+	if propagationFactor <= 0 {
+		propagationFactor = 2.0
+	}
+
+	enriched := make([]DetectedBeacon, 0, len(beacons))
+	for _, beacon := range beacons {
+		item := beacon
+		normalizedMAC, err := NormalizeMAC(beacon.MACAddress)
+		if err == nil && normalizedMAC != "" {
+			if configured, ok := lookup[normalizedMAC]; ok {
+				item.Name = configured.DisplayName
+				x := configured.X
+				y := configured.Y
+				txPower := configured.TXPower
+				item.ConfiguredX = &x
+				item.ConfiguredY = &y
+				item.TXPower = &txPower
+				if item.RSSI != 0 {
+					distance := math.Pow(10.0, float64(txPower-item.RSSI)/(10.0*propagationFactor))
+					item.Distance = &distance
+					item.DistanceAlias = &distance
+				}
+			}
+		}
+		enriched = append(enriched, item)
+	}
+
+	return enriched
 }
 
 // TrackerReport represents a report from a tracker device

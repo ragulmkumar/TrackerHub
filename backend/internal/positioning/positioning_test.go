@@ -287,6 +287,36 @@ func TestCalculatePosition(t *testing.T) {
 	}
 }
 
+func TestCalculatePositionZeroPropagationFactorUsesSafeDefault(t *testing.T) {
+	config := &models.WebUIConfig{
+		Beacons: []models.WebUIBeaconConfig{
+			{MACAddress: "AA:BB:CC:DD:EE:01", X: 0, Y: 0, TXPower: -59},
+			{MACAddress: "AA:BB:CC:DD:EE:02", X: 10, Y: 0, TXPower: -59},
+			{MACAddress: "AA:BB:CC:DD:EE:03", X: 5, Y: 10, TXPower: -59},
+		},
+		Settings: models.WebUISettings{
+			SignalPropagationFactor: 0,
+		},
+	}
+
+	detected := []models.DetectedBeacon{
+		{MACAddress: "AA:BB:CC:DD:EE:01", RSSI: -73},
+		{MACAddress: "AA:BB:CC:DD:EE:02", RSSI: -73},
+		{MACAddress: "AA:BB:CC:DD:EE:03", RSSI: -76},
+	}
+
+	result := CalculatePosition(detected, config, nil)
+	if result == nil {
+		t.Fatal("CalculatePosition should return PositionResult when signal propagation factor is zero")
+	}
+	if result.Position == nil {
+		t.Fatal("CalculatePosition should still calculate a position using the safe default propagation factor")
+	}
+	if result.Method == "none" {
+		t.Fatalf("expected a valid positioning method, got %s", result.Method)
+	}
+}
+
 func TestCalculatePositionInsufficientBeacons(t *testing.T) {
 	config := &models.WebUIConfig{
 		Beacons: []models.WebUIBeaconConfig{
