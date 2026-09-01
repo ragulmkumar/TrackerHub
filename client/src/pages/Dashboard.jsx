@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   getTrackers,
+  normalizeTrackerState,
   loadDashboardConfiguration,
   loadServerRuntimeConfiguration,
 } from "../services/configApiService";
@@ -379,15 +380,15 @@ const Dashboard = () => {
     let isMounted = true;
     (async () => {
       try {
-        const [webConfig, runtime, trackerData] = await Promise.all([
+        // Tracker data is seeded/refreshed by the continuous polling effect
+        // below, so this call only loads the static config.
+        const [webConfig, runtime] = await Promise.all([
           loadDashboardConfiguration(),
           loadServerRuntimeConfiguration(),
-          getTrackers(),
         ]);
         if (!isMounted) return;
         setMapConfig(webConfig);
         setRuntimeConfig(runtime);
-        setTrackers(Object.values(trackerData || {}));
       } catch (err) {
         if (!isMounted) return;
         setError(err.message || "Unable to load configuration.");
@@ -397,6 +398,32 @@ const Dashboard = () => {
     })();
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  // Continuous tracker refresh. The WebSocket provides low-latency live
+  // updates, but it can miss reports during a disconnect/reconnect gap. Poll
+  // the tracker API on an interval as a safety net so the dashboard always
+  // converges on the latest tracker details even if a push is dropped.
+  useEffect(() => {
+    let isActive = true;
+    const refreshTrackers = async () => {
+      try {
+        const trackerData = await getTrackers();
+        if (!isActive) return;
+        setTrackers(
+          Object.values(trackerData || {}).map(normalizeTrackerState),
+        );
+      } catch {
+        // WebSocket remains the real-time source; a transient poll failure
+        // is non-fatal and will simply be retried on the next tick.
+      }
+    };
+    refreshTrackers();
+    const intervalId = window.setInterval(refreshTrackers, 10000);
+    return () => {
+      isActive = false;
+      window.clearInterval(intervalId);
     };
   }, []);
 

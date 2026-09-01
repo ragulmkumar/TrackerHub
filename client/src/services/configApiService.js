@@ -172,6 +172,24 @@ export async function getTrackers() {
   return request("/trackers");
 }
 
+// The REST /trackers endpoint returns the persisted shape (flat x/y,
+// last_update_time, snake_case beacon fields), which differs from the shape the
+// WebSocket push delivers (position:{x,y}, timestamp, camelCase fields). The UI
+// (LiveMap / TrackerList) reads the WebSocket shape, so normalize one tracker
+// here so a REST snapshot can be used as a drop-in for live data.
+export function normalizeTrackerState(tracker = {}) {
+  const hasPosition = tracker.x != null && tracker.y != null;
+  return {
+    trackerId: tracker.trackerId,
+    position: hasPosition ? { x: tracker.x, y: tracker.y } : null,
+    accuracy: tracker.accuracy != null ? tracker.accuracy : null,
+    timestamp: tracker.last_update_time || tracker.timestamp,
+    lastUpdateTime: tracker.last_update_time || tracker.timestamp,
+    lastDetectedBeacons: tracker.last_detected_beacons || [],
+    position_history: tracker.position_history || [],
+  };
+}
+
 export async function postTrackerUpdate(update) {
   return request("/trackers", {
     method: "POST",
