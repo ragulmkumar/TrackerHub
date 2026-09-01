@@ -209,6 +209,72 @@ type WebUIConfig struct {
 	Settings WebUISettings       `json:"settings" validate:"required"`
 }
 
+// DashboardMapInfo is the reference IndoorPositioning map payload embedded in the
+// dashboard response, keeping the field names used by the legacy UI while still
+// accepting TrackerHub's richer map metadata.
+type DashboardMapInfo struct {
+	Name                  string           `json:"name,omitempty"`
+	Width                 float64          `json:"width"`
+	Height                float64          `json:"height"`
+	MinX                  float64          `json:"minX,omitempty"`
+	MaxX                  float64          `json:"maxX,omitempty"`
+	MinY                  float64          `json:"minY,omitempty"`
+	MaxY                  float64          `json:"maxY,omitempty"`
+	Background            string           `json:"background,omitempty"`
+	BackgroundImageWidth  int              `json:"backgroundImageWidth,omitempty"`
+	BackgroundImageHeight int              `json:"backgroundImageHeight,omitempty"`
+	Entities              []WebUIMapEntity `json:"entities,omitempty"`
+}
+
+// DashboardMapEntry is one top-level dashboard map configuration.
+type DashboardMapEntry struct {
+	Map      DashboardMapInfo    `json:"map"`
+	Beacons  []WebUIBeaconConfig `json:"beacons"`
+	Settings WebUISettings       `json:"settings"`
+	IsDarwin bool                `json:"is_darwin,omitempty"`
+}
+
+// DashboardResponse is the top-level response shape used by the reference dashboard.
+type DashboardResponse struct {
+	Maps []DashboardMapEntry `json:"maps"`
+}
+
+// ToDashboardResponse transforms the internal app config into the reference
+// dashboard JSON contract used by the UI.
+func (c *WebUIConfig) ToDashboardResponse() DashboardResponse {
+	response := DashboardResponse{Maps: []DashboardMapEntry{}}
+	if c == nil {
+		return response
+	}
+
+	entry := DashboardMapEntry{
+		Beacons:  append([]WebUIBeaconConfig(nil), c.Beacons...),
+		Settings: c.Settings,
+	}
+
+	if c.Map != nil {
+		mapMeta := DashboardMapInfo{
+			Name:                  c.Map.Name,
+			Width:                 c.Map.Width,
+			Height:                c.Map.Height,
+			Entities:              append([]WebUIMapEntity(nil), c.Map.Entities...),
+			BackgroundImageWidth:  c.Map.BackgroundImageWidth,
+			BackgroundImageHeight: c.Map.BackgroundImageHeight,
+			MinX:                  0,
+			MaxX:                  c.Map.Width,
+			MinY:                  0,
+			MaxY:                  c.Map.Height,
+		}
+		if c.Map.BackgroundImage != "" {
+			mapMeta.Background = c.Map.BackgroundImage
+		}
+		entry.Map = mapMeta
+	}
+
+	response.Maps = []DashboardMapEntry{entry}
+	return response
+}
+
 // ServerRuntimeConfig represents server runtime configuration
 type ServerRuntimeConfig struct {
 	MQTT                 MQTTServerConfig           `json:"mqtt"`

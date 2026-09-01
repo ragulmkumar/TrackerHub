@@ -30,8 +30,36 @@ async function request(path, options = {}) {
   return data;
 }
 
+function normalizeDashboardPayload(data) {
+  const maps = Array.isArray(data?.maps) ? data.maps : [];
+  const primaryMap = maps[0] || {};
+  const mapDetails = primaryMap.map || {};
+
+  return {
+    map: {
+      ...(mapDetails || {}),
+      backgroundImage:
+        mapDetails.background || mapDetails.backgroundImage || "",
+      backgroundImageWidth: mapDetails.backgroundImageWidth || 0,
+      backgroundImageHeight: mapDetails.backgroundImageHeight || 0,
+      entities: mapDetails.entities || [],
+    },
+    beacons: Array.isArray(primaryMap.beacons) ? primaryMap.beacons : [],
+    settings: primaryMap.settings || { signalPropagationFactor: 2.5 },
+  };
+}
+
 export async function loadWebConfiguration() {
-  return request("/config/web");
+  const data = await request("/config/web");
+  if (Array.isArray(data?.maps)) {
+    return normalizeDashboardPayload(data);
+  }
+  return data;
+}
+
+export async function loadDashboardConfiguration() {
+  const data = await request("/dashboard");
+  return normalizeDashboardPayload(data);
 }
 
 export async function saveWebConfiguration(configData) {

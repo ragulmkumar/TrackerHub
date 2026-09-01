@@ -263,6 +263,7 @@ func main() {
 		authenticated.Use(auth.AuthMiddleware(authService))
 		{
 			authenticated.GET("/config/web", apiHandler.GetWebUIConfig)
+			authenticated.GET("/dashboard", apiHandler.GetDashboardConfig)
 			authenticated.POST("/config/web", apiHandler.UpdateWebUIConfig)
 			authenticated.GET("/auth-config", authHandler.GetAuthConfig)
 			authenticated.POST("/auth-config", authHandler.UpdateAuthConfig)

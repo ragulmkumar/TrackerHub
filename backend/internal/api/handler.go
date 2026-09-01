@@ -51,6 +51,17 @@ func (h *APIHandler) GetWebUIConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, config)
 }
 
+// GetDashboardConfig returns the dashboard-shaped payload expected by the
+// reference IndoorPositioning UI while preserving TrackerHub's internal config model.
+func (h *APIHandler) GetDashboardConfig(c *gin.Context) {
+	config, err := h.configManager.LoadWebUIConfig("config/web_config.json")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load dashboard configuration"})
+		return
+	}
+	c.JSON(http.StatusOK, config.ToDashboardResponse())
+}
+
 // UpdateWebUIConfig godoc
 // @Summary Update web UI configuration
 // @Description Updates the web UI configuration with new beacon positions or map settings

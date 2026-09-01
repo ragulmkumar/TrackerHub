@@ -170,6 +170,50 @@ func TestServerRuntimeConfigReferenceResponseMatchesReferenceContract(t *testing
 	}
 }
 
+func TestWebUIConfigDashboardResponseMatchesReferenceContract(t *testing.T) {
+	config := models.WebUIConfig{
+		Map: &models.WebUIMapInfo{
+			Name:                  "Indoor",
+			Width:                 150,
+			Height:                80,
+			BackgroundImage:       "/uploads/Indoor_77285.png",
+			BackgroundImageWidth:  1672,
+			BackgroundImageHeight: 941,
+		},
+		Beacons: []models.WebUIBeaconConfig{{
+			UUID:        "FDA50693-A4E2-4FB1-AFCF-C6EB07647825",
+			Major:       10001,
+			Minor:       19641,
+			X:           48.56,
+			Y:           14.66,
+			TXPower:     -59,
+			DisplayName: "BC01",
+			MACAddress:  "c30000665686",
+		}},
+		Settings: models.WebUISettings{SignalPropagationFactor: 2.5},
+	}
+
+	response := config.ToDashboardResponse()
+	payload, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("failed to marshal dashboard response: %v", err)
+	}
+	jsonBody := string(payload)
+
+	if !strings.Contains(jsonBody, "\"maps\"") {
+		t.Fatalf("expected maps array in dashboard response, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"background\":\"/uploads/Indoor_77285.png\"") {
+		t.Fatalf("expected background field in dashboard map response, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"signalPropagationFactor\"") {
+		t.Fatalf("expected settings.signalPropagationFactor in dashboard response, got %s", jsonBody)
+	}
+	if strings.Contains(jsonBody, "\"backgroundImage\"") {
+		t.Fatalf("expected reference dashboard field name background not backgroundImage, got %s", jsonBody)
+	}
+}
+
 func floatPtr(v float64) *float64 { return &v }
 func int64Ptr(v int64) *int64     { return &v }
 

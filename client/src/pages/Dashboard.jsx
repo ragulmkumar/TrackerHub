@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   getTrackers,
-  loadWebConfiguration,
+  loadDashboardConfiguration,
   loadServerRuntimeConfiguration,
 } from "../services/configApiService";
 import websocketService from "../services/websocketService";
@@ -328,7 +328,7 @@ const Dashboard = () => {
     (async () => {
       try {
         const [webConfig, runtime, trackerData] = await Promise.all([
-          loadWebConfiguration(),
+          loadDashboardConfiguration(),
           loadServerRuntimeConfiguration(),
           getTrackers(),
         ]);
