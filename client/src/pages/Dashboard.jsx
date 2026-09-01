@@ -390,6 +390,27 @@ const Dashboard = () => {
   const signalFactor = mapConfig?.settings?.signalPropagationFactor;
   const kalman = runtimeConfig?.kalman;
   const mqtt = runtimeConfig?.mqtt;
+  const dashboardSummary = [
+    {
+      label: "Map",
+      value: mapInfo?.name || "Unassigned",
+    },
+    {
+      label: "Size",
+      value:
+        mapInfo?.width && mapInfo?.height
+          ? `${mapInfo.width} × ${mapInfo.height} m`
+          : "Not configured",
+    },
+    {
+      label: "Signal factor",
+      value: signalFactor != null ? `${signalFactor}` : "Not configured",
+    },
+    {
+      label: "Beacon count",
+      value: `${beaconCount}`,
+    },
+  ];
 
   const effectiveMqttStatus = useMemo(() => {
     if (mqttEnabled === false) return "disabled";
@@ -777,68 +798,65 @@ const Dashboard = () => {
                   color: colorPalette.warning.dark,
                 }}
               >
-                {Icons.settings}
+                {Icons.chart}
               </div>
               <div>
                 <h2
                   className="text-base font-semibold"
                   style={{ color: colorPalette.text.primary }}
                 >
-                  Workspace
+                  Live dashboard details
                 </h2>
                 <p
                   className="text-xs"
                   style={{ color: colorPalette.text.secondary }}
                 >
-                  Jump into a module
+                  Current map and positioning status
                 </p>
               </div>
             </div>
             <div className="space-y-2">
-              {[
-                {
-                  to: "/tracker-mode",
-                  label: "Tracker mode",
-                  desc: "Full-screen live map & tracker details",
-                },
-                {
-                  to: "/monitor",
-                  label: "Live monitor",
-                  desc: "Simulate updates & inspect runtime settings",
-                },
-                {
-                  to: "/configuration",
-                  label: "Configuration",
-                  desc: "Map, beacons, server runtime & security",
-                },
-              ].map((action) => (
-                <Link
-                  key={action.to}
-                  to={action.to}
-                  className="group flex items-center justify-between rounded-2xl px-4 py-3 transition-all duration-200 hover:scale-[1.01]"
+              {dashboardSummary.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between gap-3 rounded-2xl px-3 py-2"
                   style={{
                     backgroundColor: "rgba(255,255,255,0.4)",
                     border: `1px solid rgba(255,255,255,0.6)`,
                   }}
                 >
+                  <span
+                    className="text-xs font-medium uppercase tracking-[0.14em]"
+                    style={{ color: colorPalette.text.secondary }}
+                  >
+                    {item.label}
+                  </span>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: colorPalette.text.primary }}
+                  >
+                    {item.value}
+                  </span>
+                </div>
+              ))}
+
+              <div className="pt-2">
+                <Link
+                  to="/tracker-mode"
+                  className="group flex items-center justify-between rounded-2xl px-4 py-3 transition-all duration-200 hover:scale-[1.01]"
+                  style={{
+                    background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
+                    color: colorPalette.primary.contrastText,
+                    boxShadow: `0 8px 24px ${colorPalette.primary.main}30`,
+                  }}
+                >
                   <div>
-                    <p
-                      className="text-sm font-semibold"
-                      style={{ color: colorPalette.text.primary }}
-                    >
-                      {action.label}
-                    </p>
-                    <p
-                      className="text-xs"
-                      style={{ color: colorPalette.text.disabled }}
-                    >
-                      {action.desc}
+                    <p className="text-sm font-semibold">Open live monitor</p>
+                    <p className="text-xs opacity-85">
+                      Full map and tracker view
                     </p>
                   </div>
-                  <span
-                    className="transition-transform duration-200 group-hover:translate-x-1"
-                    style={{ color: colorPalette.primary.main }}
-                  >
+                  <span className="transition-transform duration-200 group-hover:translate-x-1">
                     <svg
                       className="h-4 w-4"
                       viewBox="0 0 24 24"
@@ -852,7 +870,7 @@ const Dashboard = () => {
                     </svg>
                   </span>
                 </Link>
-              ))}
+              </div>
             </div>
           </GlassCard>
         </div>

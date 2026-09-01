@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  loadWebConfiguration,
+  loadDashboardConfiguration,
   loadServerRuntimeConfiguration,
 } from "../services/configApiService";
 import websocketService from "../services/websocketService";
@@ -38,7 +38,7 @@ export default function TrackerModePage() {
     try {
       setError("");
       setLoadingConfig(true);
-      const config = await loadWebConfiguration();
+      const config = await loadDashboardConfiguration();
       setMapConfig(config);
     } catch (err) {
       setError(err.message || "Unable to load map configuration.");

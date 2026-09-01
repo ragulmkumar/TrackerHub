@@ -33,19 +33,41 @@ async function request(path, options = {}) {
 function normalizeDashboardPayload(data) {
   const maps = Array.isArray(data?.maps) ? data.maps : [];
   const primaryMap = maps[0] || {};
-  const mapDetails = primaryMap.map || {};
+  const mapDetails = primaryMap.map || data?.map || {};
+  const normalizedMap = {
+    ...(mapDetails || {}),
+    background:
+      mapDetails.background ||
+      mapDetails.backgroundImage ||
+      data?.background ||
+      "",
+    backgroundImage:
+      mapDetails.background ||
+      mapDetails.backgroundImage ||
+      data?.background ||
+      "",
+    backgroundImageWidth:
+      mapDetails.backgroundImageWidth || data?.backgroundImageWidth || 0,
+    backgroundImageHeight:
+      mapDetails.backgroundImageHeight || data?.backgroundImageHeight || 0,
+    entities: mapDetails.entities || data?.entities || [],
+    width: mapDetails.width || data?.width || 0,
+    height: mapDetails.height || data?.height || 0,
+    minX: mapDetails.minX ?? data?.minX ?? 0,
+    maxX: mapDetails.maxX ?? data?.maxX ?? 0,
+    minY: mapDetails.minY ?? data?.minY ?? 0,
+    maxY: mapDetails.maxY ?? data?.maxY ?? 0,
+  };
 
   return {
-    map: {
-      ...(mapDetails || {}),
-      backgroundImage:
-        mapDetails.background || mapDetails.backgroundImage || "",
-      backgroundImageWidth: mapDetails.backgroundImageWidth || 0,
-      backgroundImageHeight: mapDetails.backgroundImageHeight || 0,
-      entities: mapDetails.entities || [],
-    },
-    beacons: Array.isArray(primaryMap.beacons) ? primaryMap.beacons : [],
-    settings: primaryMap.settings || { signalPropagationFactor: 2.5 },
+    map: normalizedMap,
+    beacons: Array.isArray(primaryMap.beacons)
+      ? primaryMap.beacons
+      : Array.isArray(data?.beacons)
+        ? data.beacons
+        : [],
+    settings: primaryMap.settings ||
+      data?.settings || { signalPropagationFactor: 2.5 },
   };
 }
 
