@@ -153,36 +153,32 @@ type ServerRuntimeConfig struct {
 // IndoorPositioning reference dashboard. It preserves TrackerHub's internal
 // config model while exposing the reference API contract for frontend consumers.
 type ServerRuntimeConfigReferenceResponse struct {
-	SensecapOpenStream   MQTTServerConfig           `json:"sensecapOpenStream"`
-	LWNSMqtt             MQTTServerConfig           `json:"lwnsMqtt"`
-	ChirpStackMqtt       MQTTServerConfig           `json:"chirpStackMqtt,omitempty"`
-	Server               WebServerConfig            `json:"server"`
-	Kalman               KalmanParams               `json:"kalman"`
-	TrackerList          []TrackerRegistryEntry     `json:"tracker_list,omitempty"`
-	AllowAllTracker      bool                       `json:"allow_all_tracker,omitempty"`
-	AllowAreaLocation    bool                       `json:"allow_area_location,omitempty"`
-	Username             string                     `json:"username,omitempty"`
-	Password             string                     `json:"password,omitempty"`
-	Webhook              WebhookConfig              `json:"webhook"`
-	MQTT                 MQTTServerConfig           `json:"mqtt,omitempty"`
-	TrackerAccessControl TrackerAccessControlConfig `json:"trackerAccessControl,omitempty"`
+	SensecapOpenStream MQTTServerConfig       `json:"sensecapOpenStream"`
+	LWNSMqtt           MQTTServerConfig       `json:"lwnsMqtt"`
+	ChirpStackMqtt     MQTTServerConfig       `json:"chirpStackMqtt,omitempty"`
+	Server             WebServerConfig        `json:"server"`
+	Kalman             KalmanParams           `json:"kalman"`
+	TrackerList        []TrackerRegistryEntry `json:"tracker_list,omitempty"`
+	AllowAllTracker    bool                   `json:"allow_all_tracker,omitempty"`
+	AllowAreaLocation  bool                   `json:"allow_area_location,omitempty"`
+	Username           string                 `json:"username,omitempty"`
+	Password           string                 `json:"password,omitempty"`
+	Webhook            WebhookConfig          `json:"webhook"`
 }
 
 // ToReferenceAPIResponse transforms the internal runtime config into the
 // reference JSON schema expected by the dashboard.
 func (c *ServerRuntimeConfig) ToReferenceAPIResponse() ServerRuntimeConfigReferenceResponse {
 	response := ServerRuntimeConfigReferenceResponse{
-		SensecapOpenStream:   MQTTServerConfig{BrokerHost: "127.0.0.1", BrokerPort: 1883, Enabled: false},
-		LWNSMqtt:             c.MQTT,
-		ChirpStackMqtt:       c.MQTT,
-		Server:               c.Server,
-		Kalman:               c.Kalman,
-		TrackerList:          c.TrackerRegistry,
-		AllowAllTracker:      c.TrackerAccessControl.AllowAll,
-		AllowAreaLocation:    c.AllowAreaLocation,
-		Webhook:              c.Webhook,
-		MQTT:                 c.MQTT,
-		TrackerAccessControl: c.TrackerAccessControl,
+		SensecapOpenStream: MQTTServerConfig{BrokerHost: "127.0.0.1", BrokerPort: 1883, Enabled: false},
+		LWNSMqtt:           c.MQTT,
+		ChirpStackMqtt:     c.MQTT,
+		Server:             c.Server,
+		Kalman:             c.Kalman,
+		TrackerList:        c.TrackerRegistry,
+		AllowAllTracker:    c.TrackerAccessControl.AllowAll,
+		AllowAreaLocation:  c.AllowAreaLocation,
+		Webhook:            c.Webhook,
 	}
 	response.Webhook.Enabled = c.Webhook.Enabled || c.Webhook.Enable
 	response.Webhook.Enable = c.Webhook.Enabled || c.Webhook.Enable

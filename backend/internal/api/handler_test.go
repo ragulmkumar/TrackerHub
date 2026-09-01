@@ -159,6 +159,12 @@ func TestServerRuntimeConfigReferenceResponseMatchesReferenceContract(t *testing
 	if !strings.Contains(jsonBody, "\"allow_area_location\"") {
 		t.Fatalf("expected allow_area_location in response, got %s", jsonBody)
 	}
+	if strings.Contains(jsonBody, "\"mqtt\"") {
+		t.Fatalf("legacy internal mqtt field should not be included in reference response, got %s", jsonBody)
+	}
+	if strings.Contains(jsonBody, "\"trackerAccessControl\"") {
+		t.Fatalf("legacy internal trackerAccessControl field should not be included in reference response, got %s", jsonBody)
+	}
 	if !strings.Contains(jsonBody, "\"enable\":false") {
 		t.Fatalf("expected webhook enable flag in reference response, got %s", jsonBody)
 	}

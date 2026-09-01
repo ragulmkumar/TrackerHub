@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -56,7 +57,7 @@ func (cm *ConfigManager) LoadServerRuntimeConfig(filePath string) (*models.Serve
 		if err := cm.SaveServerRuntimeConfig(filePath, defaultConfig); err != nil {
 			return nil, err
 		}
-		return defaultConfig, nil
+		return applyRuntimeConfigEnvOverrides(defaultConfig), nil
 	}
 
 	data, err := os.ReadFile(filePath)
@@ -69,7 +70,49 @@ func (cm *ConfigManager) LoadServerRuntimeConfig(filePath string) (*models.Serve
 		return nil, err
 	}
 
-	return &config, nil
+	return applyRuntimeConfigEnvOverrides(&config), nil
+}
+
+func applyRuntimeConfigEnvOverrides(config *models.ServerRuntimeConfig) *models.ServerRuntimeConfig {
+	if config == nil {
+		return nil
+	}
+
+	if value, ok := os.LookupEnv("MQTT_BROKER_HOST"); ok && value != "" {
+		config.MQTT.BrokerHost = value
+	}
+	if value, ok := os.LookupEnv("MQTT_BROKER_PORT"); ok && value != "" {
+		if port, err := strconv.Atoi(value); err == nil {
+			config.MQTT.BrokerPort = port
+		}
+	}
+	if value, ok := os.LookupEnv("MQTT_USERNAME"); ok && value != "" {
+		config.MQTT.Username = value
+	}
+	if value, ok := os.LookupEnv("MQTT_PASSWORD"); ok && value != "" {
+		config.MQTT.Password = value
+	}
+	if value, ok := os.LookupEnv("MQTT_APPLICATION_ID"); ok && value != "" {
+		config.MQTT.ApplicationID = value
+	}
+	if value, ok := os.LookupEnv("MQTT_TOPIC_PATTERN"); ok && value != "" {
+		config.MQTT.TopicPattern = value
+	}
+	if value, ok := os.LookupEnv("MQTT_CLIENT_ID"); ok && value != "" {
+		config.MQTT.ClientID = value
+	}
+	if value, ok := os.LookupEnv("MQTT_ENABLED"); ok && value != "" {
+		if enabled, err := strconv.ParseBool(value); err == nil {
+			config.MQTT.Enabled = enabled
+		}
+	}
+	if value, ok := os.LookupEnv("SERVER_PORT"); ok && value != "" {
+		if port, err := strconv.Atoi(value); err == nil {
+			config.Server.Port = port
+		}
+	}
+
+	return config
 }
 
 // SaveServerRuntimeConfig saves the server runtime configuration to JSON file

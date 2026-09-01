@@ -11,8 +11,15 @@ services:
       - ./backend/config:/app/config
     environment:
       - GO_ENV=development
-      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_HOST=lwns.adarko.io
       - MQTT_BROKER_PORT=1883
+      - MQTT_USERNAME=0f82700a-9219-4540-b3c2-1aefb93f0b9d
+      - MQTT_PASSWORD=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjaGlycHN0YWNrIiwiaXNzIjoiY2hpcnBzdGFjayIsInN1YiI6Ijc2OTZlNDViLTRiMDctNGY0MS1hNGExLTU1YjJkOWExOGY4OSIsInR5cCI6ImtleSJ9.Wwl1ReCxmvHWALpFESaeVvH-VCtnvAeHcrgib9Eh6O0
+      - MQTT_APPLICATION_ID=8d765299-6bd2-4a9c-a841-7406785ff516
+      - MQTT_TOPIC_PATTERN=application/8d765299-6bd2-4a9c-a841-7406785ff516/device/+/event/up
+      - MQTT_CLIENT_ID=trackerhub-dev
+      - MQTT_ENABLED=true
+      - SERVER_PORT=8022
     depends_on:
       - mqtt-broker
     command: air
