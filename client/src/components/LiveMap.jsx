@@ -140,12 +140,31 @@ export default function LiveMap({
       });
     }
 
-    // Draw trackers
+    // Draw trackers. A tracker should remain visible while waiting for a fresh
+    // position estimate, using its last known point as the display anchor.
     trackers.forEach((tracker) => {
-      if (!tracker.position) {
+      const position =
+        tracker.position &&
+        Number.isFinite(tracker.position.x) &&
+        Number.isFinite(tracker.position.y)
+          ? tracker.position
+          : Array.isArray(tracker.position_history) &&
+              tracker.position_history.length > 0
+            ? {
+                x: tracker.position_history[
+                  tracker.position_history.length - 1
+                ][0],
+                y: tracker.position_history[
+                  tracker.position_history.length - 1
+                ][1],
+              }
+            : null;
+
+      if (!position) {
         return;
       }
-      const [cx, cy] = toCanvas(tracker.position.x, tracker.position.y);
+
+      const [cx, cy] = toCanvas(position.x, position.y);
       ctx.beginPath();
       ctx.fillStyle = "#38BDF8";
       ctx.arc(cx, cy, 10, 0, Math.PI * 2);

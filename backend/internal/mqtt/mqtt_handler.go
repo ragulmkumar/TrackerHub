@@ -218,7 +218,10 @@ func (h *MQTTHandler) parseTrackerReport(deviceEUI string, payload []byte) *mode
 		return nil
 	}
 
-	// Extract timestamp from payload (milliseconds since epoch)
+	// Extract timestamp from payload (milliseconds since epoch).
+	// Real ChirpStack payloads store a timestamp inside the nested measurement object,
+	// so prefer the top-level timestamp when present and otherwise fall back to the
+	// first nested measurement timestamp found while scanning the payload.
 	var timestamp int64
 	if ts, ok := data["timestamp"]; ok {
 		switch v := ts.(type) {
@@ -233,6 +236,8 @@ func (h *MQTTHandler) parseTrackerReport(deviceEUI string, payload []byte) *mode
 		default:
 			timestamp = time.Now().UnixMilli()
 		}
+	} else if nestedTS := findNestedMeasurementTimestamp(data); nestedTS != nil {
+		timestamp = *nestedTS
 	} else {
 		timestamp = time.Now().UnixMilli()
 	}
@@ -242,74 +247,99 @@ func (h *MQTTHandler) parseTrackerReport(deviceEUI string, payload []byte) *mode
 		Timestamp: timestamp,
 	}
 
-	// Parse SenseCAP format: "value" array with beacon objects containing "mac" and "rssi"
-	if beaconValues, ok := data["value"].([]interface{}); ok {
-		for _, b := range beaconValues {
-			if beaconMap, ok := b.(map[string]interface{}); ok {
-				detected := models.DetectedBeacon{}
-
-				// MAC address (key is "mac" in SenseCAP format)
-				if mac, ok := beaconMap["mac"].(string); ok {
-					detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
-				} else if mac, ok := beaconMap["macAddress"].(string); ok {
-					// Also support alternative key "macAddress"
-					detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
-				}
-
-				// RSSI (key is "rssi" - can be string or number in SenseCAP format)
-				if rssi, ok := beaconMap["rssi"].(string); ok {
-					if parsed, err := strconv.Atoi(rssi); err == nil {
-						detected.RSSI = parsed
-					}
-				} else if rssi, ok := beaconMap["rssi"].(float64); ok {
-					detected.RSSI = int(rssi)
-				}
-
-				// Only add if we have valid MAC and RSSI
-				if detected.MACAddress != "" && detected.RSSI != 0 {
-					report.DetectedBeacons = append(report.DetectedBeacons, detected)
-				}
-			}
+	beaconValues := findBeaconValues(data)
+	for _, b := range beaconValues {
+		beaconMap, ok := b.(map[string]interface{})
+		if !ok {
+			continue
 		}
-	} else if beaconValues, ok := data["beacons"].([]interface{}); ok {
-		// Legacy format support
-		for _, b := range beaconValues {
-			if beaconMap, ok := b.(map[string]interface{}); ok {
-				detected := models.DetectedBeacon{}
+		detected := models.DetectedBeacon{}
 
-				// MAC address (key is "macAddress" in legacy format)
-				if mac, ok := beaconMap["macAddress"].(string); ok {
-					detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
-				}
+		if mac, ok := beaconMap["mac"].(string); ok {
+			detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
+		} else if mac, ok := beaconMap["macAddress"].(string); ok {
+			detected.MACAddress = strings.ToUpper(strings.ReplaceAll(mac, ":", ""))
+		}
 
-				// RSSI (can be string or number)
-				if rssi, ok := beaconMap["rssi"].(string); ok {
-					if parsed, err := strconv.Atoi(rssi); err == nil {
-						detected.RSSI = parsed
-					}
-				} else if rssi, ok := beaconMap["rssi"].(float64); ok {
-					detected.RSSI = int(rssi)
-				}
-
-				// Optional: Major/Minor for iBeacon
-				if major, ok := beaconMap["major"].(float64); ok {
-					majorInt := int(major)
-					detected.Major = &majorInt
-				}
-				if minor, ok := beaconMap["minor"].(float64); ok {
-					minorInt := int(minor)
-					detected.Minor = &minorInt
-				}
-
-				// Only add if we have valid MAC and RSSI
-				if detected.MACAddress != "" && detected.RSSI != 0 {
-					report.DetectedBeacons = append(report.DetectedBeacons, detected)
-				}
+		if rssi, ok := beaconMap["rssi"].(string); ok {
+			if parsed, err := strconv.Atoi(rssi); err == nil {
+				detected.RSSI = parsed
 			}
+		} else if rssi, ok := beaconMap["rssi"].(float64); ok {
+			detected.RSSI = int(rssi)
+		}
+
+		if major, ok := beaconMap["major"].(float64); ok {
+			majorInt := int(major)
+			detected.Major = &majorInt
+		}
+		if minor, ok := beaconMap["minor"].(float64); ok {
+			minorInt := int(minor)
+			detected.Minor = &minorInt
+		}
+
+		if detected.MACAddress != "" && detected.RSSI != 0 {
+			report.DetectedBeacons = append(report.DetectedBeacons, detected)
 		}
 	}
 
 	return report
+}
+
+func findBeaconValues(data interface{}) []interface{} {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		if beaconValues, ok := v["value"].([]interface{}); ok {
+			return beaconValues
+		}
+		if beaconValues, ok := v["beacons"].([]interface{}); ok {
+			return beaconValues
+		}
+		if measurementValue, ok := v["measurementValue"].([]interface{}); ok {
+			return measurementValue
+		}
+		for _, value := range v {
+			if beaconValues := findBeaconValues(value); len(beaconValues) > 0 {
+				return beaconValues
+			}
+		}
+	case []interface{}:
+		for _, item := range v {
+			if beaconValues := findBeaconValues(item); len(beaconValues) > 0 {
+				return beaconValues
+			}
+		}
+	}
+	return nil
+}
+
+func findNestedMeasurementTimestamp(data interface{}) *int64 {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		if ts, ok := v["timestamp"]; ok {
+			switch typed := ts.(type) {
+			case float64:
+				parsed := int64(typed)
+				return &parsed
+			case string:
+				if parsed, err := strconv.ParseInt(typed, 10, 64); err == nil {
+					return &parsed
+				}
+			}
+		}
+		for _, value := range v {
+			if nested := findNestedMeasurementTimestamp(value); nested != nil {
+				return nested
+			}
+		}
+	case []interface{}:
+		for _, item := range v {
+			if nested := findNestedMeasurementTimestamp(item); nested != nil {
+				return nested
+			}
+		}
+	}
+	return nil
 }
 
 // Error constants

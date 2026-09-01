@@ -59,10 +59,10 @@ type TrackerState struct {
 	X                        *float64         `json:"x,omitempty"`
 	Y                        *float64         `json:"y,omitempty"`
 	Accuracy                 *float64         `json:"accuracy,omitempty"`
-	LastUpdateTime           int64            `json:"lastUpdateTime" validate:"required,gte=0"`
-	LastKnownMeasurementTime *int64           `json:"lastKnownMeasurementTime,omitempty"`
-	LastDetectedBeacons      []DetectedBeacon `json:"lastDetectedBeacons,omitempty"`
-	PositionHistory          [][3]float64     `json:"positionHistory,omitempty"` // [x, y, timestamp]
+	LastUpdateTime           int64            `json:"last_update_time" validate:"required,gte=0"`
+	LastKnownMeasurementTime *int64           `json:"last_known_measurement_time,omitempty"`
+	LastDetectedBeacons      []DetectedBeacon `json:"last_detected_beacons,omitempty"`
+	PositionHistory          [][3]float64     `json:"position_history,omitempty"` // [x, y, timestamp]
 }
 
 // TrackerPosition represents a tracker position payload sent through WebSocket.
@@ -149,6 +149,49 @@ type ServerRuntimeConfig struct {
 	TrackerRegistry      []TrackerRegistryEntry     `json:"trackerRegistry,omitempty"`
 }
 
+// ServerRuntimeConfigReferenceResponse is the payload shape used by the
+// IndoorPositioning reference dashboard. It preserves TrackerHub's internal
+// config model while exposing the reference API contract for frontend consumers.
+type ServerRuntimeConfigReferenceResponse struct {
+	SensecapOpenStream   MQTTServerConfig           `json:"sensecapOpenStream"`
+	LWNSMqtt             MQTTServerConfig           `json:"lwnsMqtt"`
+	ChirpStackMqtt       MQTTServerConfig           `json:"chirpStackMqtt,omitempty"`
+	Server               WebServerConfig            `json:"server"`
+	Kalman               KalmanParams               `json:"kalman"`
+	TrackerList          []TrackerRegistryEntry     `json:"tracker_list,omitempty"`
+	AllowAllTracker      bool                       `json:"allow_all_tracker,omitempty"`
+	AllowAreaLocation    bool                       `json:"allow_area_location,omitempty"`
+	Username             string                     `json:"username,omitempty"`
+	Password             string                     `json:"password,omitempty"`
+	Webhook              WebhookConfig              `json:"webhook"`
+	MQTT                 MQTTServerConfig           `json:"mqtt,omitempty"`
+	TrackerAccessControl TrackerAccessControlConfig `json:"trackerAccessControl,omitempty"`
+}
+
+// ToReferenceAPIResponse transforms the internal runtime config into the
+// reference JSON schema expected by the dashboard.
+func (c *ServerRuntimeConfig) ToReferenceAPIResponse() ServerRuntimeConfigReferenceResponse {
+	response := ServerRuntimeConfigReferenceResponse{
+		SensecapOpenStream:   MQTTServerConfig{BrokerHost: "127.0.0.1", BrokerPort: 1883, Enabled: false},
+		LWNSMqtt:             c.MQTT,
+		ChirpStackMqtt:       c.MQTT,
+		Server:               c.Server,
+		Kalman:               c.Kalman,
+		TrackerList:          c.TrackerRegistry,
+		AllowAllTracker:      c.TrackerAccessControl.AllowAll,
+		AllowAreaLocation:    c.AllowAreaLocation,
+		Webhook:              c.Webhook,
+		MQTT:                 c.MQTT,
+		TrackerAccessControl: c.TrackerAccessControl,
+	}
+	response.Webhook.Enabled = c.Webhook.Enabled || c.Webhook.Enable
+	response.Webhook.Enable = c.Webhook.Enabled || c.Webhook.Enable
+	if c.TrackerAccessControl.Enabled {
+		response.AllowAllTracker = c.TrackerAccessControl.AllowAll
+	}
+	return response
+}
+
 // MQTTServerConfig holds MQTT connection settings
 type MQTTServerConfig struct {
 	BrokerHost     string `json:"brokerHost" validate:"required"`
@@ -194,8 +237,11 @@ type TrackerRegistryEntry struct {
 }
 
 // WebhookConfig stores optional outbound webhook settings.
+// Support both the legacy internal field name (`enabled`) and the reference
+// dashboard field name (`enable`) so the API can match either contract.
 type WebhookConfig struct {
 	Enabled bool              `json:"enabled"`
+	Enable  bool              `json:"enable"`
 	HostURL string            `json:"hostUrl,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
 }

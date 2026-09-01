@@ -232,6 +232,29 @@ func TestParseTrackerReportSupportsAlternativeMACKey(t *testing.T) {
 	}
 }
 
+func TestParseTrackerReportParsesRealChirpStackEventPayload(t *testing.T) {
+	handler := &MQTTHandler{config: &models.MQTTServerConfig{}}
+
+	payload := `{"object":{"messages":[[{"measurementValue":[{"rssi":"-82","mac":"C3:00:00:3E:7D:EF"},{"mac":"C3:00:00:3E:7D:DA","rssi":"-87"},{"rssi":"-93","mac":"C3:00:00:3E:7D:E0"}],"measurementId":"5002","type":"BLE Scan","timestamp":1745465694000.0}]]}}`
+	report := handler.parseTrackerReport("2CF7F1C0530004AD", []byte(payload))
+
+	if report == nil {
+		t.Fatal("expected non-nil report for real ChirpStack payload")
+	}
+	if report.TrackerID != "2CF7F1C0530004AD" {
+		t.Fatalf("expected tracker ID 2CF7F1C0530004AD, got %s", report.TrackerID)
+	}
+	if len(report.DetectedBeacons) != 3 {
+		t.Fatalf("expected 3 detected beacons, got %d", len(report.DetectedBeacons))
+	}
+	if report.DetectedBeacons[0].MACAddress != "C300003E7DEF" {
+		t.Fatalf("expected first MAC to be C300003E7DEF, got %s", report.DetectedBeacons[0].MACAddress)
+	}
+	if report.DetectedBeacons[0].RSSI != -82 {
+		t.Fatalf("expected first RSSI -82, got %d", report.DetectedBeacons[0].RSSI)
+	}
+}
+
 func TestMQTTErrorConstants(t *testing.T) {
 	if ErrNotConnected == nil {
 		t.Fatal("ErrNotConnected should not be nil")

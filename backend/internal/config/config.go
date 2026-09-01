@@ -42,6 +42,7 @@ func (cm *ConfigManager) LoadServerRuntimeConfig(filePath string) (*models.Serve
 			AllowAreaLocation: false,
 			Webhook: models.WebhookConfig{
 				Enabled: false,
+				Enable:  false,
 				HostURL: "",
 				Headers: map[string]string{},
 			},

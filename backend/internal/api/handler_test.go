@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"trackerHub/backend/internal/models"
@@ -53,6 +55,117 @@ func TestAPIHandlerApplyTrackerUpdatePayload(t *testing.T) {
 		t.Fatalf("expected Y coordinate to be applied from update payload")
 	}
 }
+
+func TestTrackerStateJSONMatchesReferenceContract(t *testing.T) {
+	state := models.TrackerState{
+		TrackerID:                "2CF7F1C0530004AD",
+		X:                        floatPtr(10.5),
+		Y:                        floatPtr(4.25),
+		Accuracy:                 floatPtr(1.75),
+		LastUpdateTime:           1710000000,
+		LastKnownMeasurementTime: int64Ptr(1710000000),
+		LastDetectedBeacons: []models.DetectedBeacon{{
+			MACAddress: "AABBCCDDEEFF",
+			RSSI:       -65,
+		}},
+		PositionHistory: [][3]float64{{10.5, 4.25, 1710000000}},
+	}
+
+	payload, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("failed to marshal tracker state: %v", err)
+	}
+	jsonBody := string(payload)
+
+	if strings.Contains(jsonBody, "lastUpdateTime") {
+		t.Fatalf("tracker API contract should use snake_case last_update_time, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"last_update_time\"") {
+		t.Fatalf("expected last_update_time in serialized tracker state, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"last_detected_beacons\"") {
+		t.Fatalf("expected last_detected_beacons in serialized tracker state, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"position_history\"") {
+		t.Fatalf("expected position_history in serialized tracker state, got %s", jsonBody)
+	}
+}
+
+func TestTrackerStateAutoPopulatesFromRealTrackerReport(t *testing.T) {
+	handler := &APIHandler{trackerStates: map[string]models.TrackerState{}}
+
+	handler.UpsertTrackerStateWithData(
+		"2CF7F1C0530004AD",
+		[]float64{10.5, 4.25},
+		1710000000,
+		[]models.DetectedBeacon{{MACAddress: "C300003E7DEF", RSSI: -82}},
+		nil,
+	)
+
+	if _, ok := handler.trackerStates["2CF7F1C0530004AD"]; !ok {
+		t.Fatalf("expected tracker to appear automatically in tracker state after a real telemetry update")
+	}
+
+	state := handler.trackerStates["2CF7F1C0530004AD"]
+	if state.TrackerID != "2CF7F1C0530004AD" {
+		t.Fatalf("expected tracker id to be preserved, got %s", state.TrackerID)
+	}
+	if state.X == nil || *state.X != 10.5 {
+		t.Fatalf("expected X to be stored from the real tracker report")
+	}
+	if state.Y == nil || *state.Y != 4.25 {
+		t.Fatalf("expected Y to be stored from the real tracker report")
+	}
+	if len(state.LastDetectedBeacons) != 1 {
+		t.Fatalf("expected one detected beacon to be stored, got %d", len(state.LastDetectedBeacons))
+	}
+}
+
+func TestServerRuntimeConfigReferenceResponseMatchesReferenceContract(t *testing.T) {
+	config := models.ServerRuntimeConfig{
+		MQTT: models.MQTTServerConfig{
+			BrokerHost:    "lwns.adarko.io",
+			BrokerPort:    1883,
+			Username:      "user",
+			Password:      "pass",
+			ApplicationID: "app-01",
+			TopicPattern:  "application/app-01/device/+/event/up",
+			ClientID:      "client-abc",
+			Enabled:       true,
+		},
+		Server:            models.WebServerConfig{Port: 8022},
+		Kalman:            models.KalmanParams{ProcessVariance: 1.0, MeasurementVariance: 10.0},
+		AllowAreaLocation: true,
+		Webhook:           models.WebhookConfig{Enabled: false, Enable: false},
+		TrackerAccessControl: models.TrackerAccessControlConfig{
+			Enabled:  true,
+			AllowAll: true,
+		},
+	}
+
+	response := config.ToReferenceAPIResponse()
+	payload, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("failed to marshal reference response: %v", err)
+	}
+	jsonBody := string(payload)
+
+	if !strings.Contains(jsonBody, "\"lwnsMqtt\"") {
+		t.Fatalf("expected lwnsMqtt in response, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"allow_all_tracker\"") {
+		t.Fatalf("expected allow_all_tracker in response, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"allow_area_location\"") {
+		t.Fatalf("expected allow_area_location in response, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"enable\":false") {
+		t.Fatalf("expected webhook enable flag in reference response, got %s", jsonBody)
+	}
+}
+
+func floatPtr(v float64) *float64 { return &v }
+func int64Ptr(v int64) *int64     { return &v }
 
 func TestValidateServerRuntimeConfig(t *testing.T) {
 	handler := &APIHandler{}

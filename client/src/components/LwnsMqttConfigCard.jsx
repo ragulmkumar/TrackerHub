@@ -44,7 +44,7 @@ function buildDerivedValues(applicationID) {
   };
 }
 
-export default function ChirpStackConfigCard() {
+export default function LwnsMqttConfigCard() {
   const [config, setConfig] = useState(defaultRuntimeConfig);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -92,7 +92,7 @@ export default function ChirpStackConfigCard() {
         },
       });
     } catch (err) {
-      setError(err.message || "Unable to load ChirpStack configuration");
+      setError(err.message || "Unable to load LWNS configuration");
     } finally {
       setLoading(false);
     }
@@ -134,11 +134,11 @@ export default function ChirpStackConfigCard() {
       };
 
       await saveServerRuntimeConfiguration(payload);
-      setMessage("ChirpStack MQTT configuration updated successfully.");
+      setMessage("LWNS MQTT configuration updated successfully.");
       setEditing(false);
       await loadConfig();
     } catch (err) {
-      setError(err.message || "Failed to save ChirpStack configuration");
+      setError(err.message || "Failed to save LWNS configuration");
     } finally {
       setSaving(false);
     }
@@ -152,20 +152,20 @@ export default function ChirpStackConfigCard() {
             className="text-sm font-semibold uppercase tracking-[0.3em]"
             style={{ color: colorPalette.primary.main }}
           >
-            ChirpStack MQTT
+            LWNS MQTT
           </p>
           <h2
             className="mt-1 text-xl font-semibold"
             style={{ color: colorPalette.text.primary }}
           >
-            Configure ChirpStack connectivity for LoRaWAN tracker ingestion
+            Configure LWNS connectivity for LoRaWAN tracker ingestion
           </h2>
           <p
             className="mt-2 text-sm"
             style={{ color: colorPalette.text.secondary }}
           >
-            Manage the broker settings and topic identity used for ChirpStack
-            MQTT traffic.
+            Manage the broker settings and topic identity used for LWNS MQTT
+            traffic.
           </p>
         </div>
         {!editing ? (
@@ -223,7 +223,7 @@ export default function ChirpStackConfigCard() {
 
       {loading ? (
         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-600">
-          Loading ChirpStack configuration...
+          Loading LWNS configuration...
         </div>
       ) : (
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -300,7 +300,7 @@ export default function ChirpStackConfigCard() {
                   onChange={(event) =>
                     updateField("serverRegion", event.target.value)
                   }
-                  placeholder="e.g. eu, us, cn (optional for ChirpStack)"
+                  placeholder="e.g. eu, us, cn (optional for LWNS)"
                 />
               </label>
               <label

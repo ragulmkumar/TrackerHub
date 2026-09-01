@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
+  getTrackers,
   loadWebConfiguration,
   loadServerRuntimeConfiguration,
 } from "../services/configApiService";
@@ -328,13 +329,15 @@ const Dashboard = () => {
     let isMounted = true;
     (async () => {
       try {
-        const [webConfig, runtime] = await Promise.all([
+        const [webConfig, runtime, trackerData] = await Promise.all([
           loadWebConfiguration(),
           loadServerRuntimeConfiguration(),
+          getTrackers(),
         ]);
         if (!isMounted) return;
         setMapConfig(webConfig);
         setRuntimeConfig(runtime);
+        setTrackers(Object.values(trackerData || {}));
       } catch (err) {
         if (!isMounted) return;
         setError(err.message || "Unable to load configuration.");

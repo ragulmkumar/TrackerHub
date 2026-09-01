@@ -41,8 +41,57 @@ export async function saveWebConfiguration(configData) {
   });
 }
 
+function normalizeRuntimeConfig(data) {
+  const fallbackMqtt =
+    data?.mqtt ||
+    data?.lwnsMqtt ||
+    data?.chirpStackMqtt ||
+    data?.sensecapOpenStream ||
+    {};
+  const lwnsMqtt = data?.lwnsMqtt || fallbackMqtt;
+  const normalized = {
+    ...data,
+    mqtt: fallbackMqtt,
+    lwnsMqtt,
+    chirpStackMqtt: data?.chirpStackMqtt || lwnsMqtt,
+    sensecapOpenStream: data?.sensecapOpenStream || {
+      brokerHost: "127.0.0.1",
+      brokerPort: 1883,
+      username: "",
+      password: null,
+      applicationID: null,
+      topicPattern: "",
+      clientID: "",
+      enabled: false,
+      live_mqtt_status: "disconnected",
+    },
+    trackerAccessControl: {
+      enabled: Boolean(
+        data?.trackerAccessControl?.enabled ??
+        data?.tracker_access_control ??
+        true,
+      ),
+      allowAll: Boolean(
+        data?.trackerAccessControl?.allowAll ?? data?.allow_all_tracker ?? true,
+      ),
+      allowedTrackers: data?.trackerAccessControl?.allowedTrackers || [],
+    },
+    webhook: data?.webhook || { enabled: false },
+  };
+
+  if (
+    normalized.trackerAccessControl.enabled === false &&
+    normalized.trackerAccessControl.allowAll === false
+  ) {
+    normalized.trackerAccessControl.allowAll = true;
+  }
+
+  return normalized;
+}
+
 export async function loadServerRuntimeConfiguration() {
-  return request("/server-runtime-config");
+  const data = await request("/server-runtime-config");
+  return normalizeRuntimeConfig(data);
 }
 
 export async function loadAuthenticationConfiguration() {

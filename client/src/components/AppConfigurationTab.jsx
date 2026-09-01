@@ -6,7 +6,7 @@ import WebhookConfigCard from "./WebhookConfigCard";
 import TrackerAccessControlCard from "./TrackerAccessControlCard";
 import TrackerRegistryCard from "./TrackerRegistryCard";
 import SenseCapConfigCard from "./SenseCapConfigCard";
-import ChirpStackConfigCard from "./ChirpStackConfigCard";
+import LwnsMqttConfigCard from "./LwnsMqttConfigCard";
 import colorPalette from "../themes/colorPalette";
 
 export default function AppConfigurationTab() {
@@ -41,9 +41,9 @@ export default function AppConfigurationTab() {
       component: <SenseCapConfigCard />,
     },
     {
-      id: "chirpstack",
-      label: "ChirpStack MQTT",
-      component: <ChirpStackConfigCard />,
+      id: "lwns",
+      label: "LWNS MQTT",
+      component: <LwnsMqttConfigCard />,
     },
   ];
 

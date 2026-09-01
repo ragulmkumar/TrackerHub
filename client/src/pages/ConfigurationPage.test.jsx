@@ -889,7 +889,7 @@ describe("ConfigurationPage - App Configuration Tab", () => {
         screen.getByRole("button", { name: "SenseCAP MQTT" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: "ChirpStack MQTT" }),
+        screen.getByRole("button", { name: "LWNS MQTT" }),
       ).toBeInTheDocument();
     });
   });
@@ -1077,14 +1077,14 @@ describe("ConfigurationPage - App Configuration Tab", () => {
       );
       // ToggleSwitch renders an "Enabled"/"Disabled" status badge
       expect(screen.getAllByText("Disabled").length).toBeGreaterThan(0);
-      // "Server region" appears in both SenseCAP and ChirpStack cards
+      // "Server region" appears in both SenseCAP and LWNS cards
       expect(screen.getAllByText("Server region").length).toBeGreaterThan(0);
       // Use getAllByText since "Application ID" appears in multiple places
       expect(screen.getAllByText("Application ID").length).toBeGreaterThan(0);
     });
   });
 
-  it("shows ChirpStack MQTT card when ChirpStack MQTT section is selected", async () => {
+  it("shows LWNS MQTT card when LWNS MQTT section is selected", async () => {
     renderPage();
     await waitFor(() => {
       expect(
@@ -1096,16 +1096,16 @@ describe("ConfigurationPage - App Configuration Tab", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "ChirpStack MQTT" }),
+        screen.getByRole("button", { name: "LWNS MQTT" }),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "ChirpStack MQTT" }));
+    fireEvent.click(screen.getByRole("button", { name: "LWNS MQTT" }));
 
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Configure ChirpStack connectivity for LoRaWAN tracker ingestion",
+          "Configure LWNS connectivity for LoRaWAN tracker ingestion",
         ),
       ).toBeInTheDocument();
       // "Connection profile" appears in multiple cards

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -141,7 +142,7 @@ func (h *APIHandler) GetServerRuntimeConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load server runtime configuration"})
 		return
 	}
-	c.JSON(http.StatusOK, config)
+	c.JSON(http.StatusOK, config.ToReferenceAPIResponse())
 }
 
 // UpdateServerRuntimeConfig godoc
@@ -157,14 +158,81 @@ func (h *APIHandler) GetServerRuntimeConfig(c *gin.Context) {
 // @Router /api/server-runtime-config [post]
 func (h *APIHandler) UpdateServerRuntimeConfig(c *gin.Context) {
 	var config models.ServerRuntimeConfig
-	if err := c.ShouldBindJSON(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
+	if err := c.ShouldBindJSON(&config); err == nil {
+		if err := h.ValidateServerRuntimeConfig(&config); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		var raw map[string]interface{}
+		if bindErr := c.ShouldBindJSON(&raw); bindErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
 
-	if err := h.ValidateServerRuntimeConfig(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+		if mqttValue, ok := raw["lwnsMqtt"]; ok {
+			mqttBytes, marshalErr := json.Marshal(mqttValue)
+			if marshalErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid LWNS MQTT configuration"})
+				return
+			}
+			if unmarshalErr := json.Unmarshal(mqttBytes, &config.MQTT); unmarshalErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid LWNS MQTT configuration"})
+				return
+			}
+		} else if mqttValue, ok := raw["chirpStackMqtt"]; ok {
+			mqttBytes, marshalErr := json.Marshal(mqttValue)
+			if marshalErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid LWNS MQTT configuration"})
+				return
+			}
+			if unmarshalErr := json.Unmarshal(mqttBytes, &config.MQTT); unmarshalErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid LWNS MQTT configuration"})
+				return
+			}
+		} else if mqttValue, ok = raw["mqtt"]; ok {
+			mqttBytes, marshalErr := json.Marshal(mqttValue)
+			if marshalErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid MQTT configuration"})
+				return
+			}
+			if unmarshalErr := json.Unmarshal(mqttBytes, &config.MQTT); unmarshalErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid MQTT configuration"})
+				return
+			}
+		}
+
+		if serverValue, ok := raw["server"]; ok {
+			serverBytes, _ := json.Marshal(serverValue)
+			_ = json.Unmarshal(serverBytes, &config.Server)
+		}
+		if kalmanValue, ok := raw["kalman"]; ok {
+			kalmanBytes, _ := json.Marshal(kalmanValue)
+			_ = json.Unmarshal(kalmanBytes, &config.Kalman)
+		}
+		if webhookValue, ok := raw["webhook"]; ok {
+			webhookBytes, _ := json.Marshal(webhookValue)
+			_ = json.Unmarshal(webhookBytes, &config.Webhook)
+		}
+		if accessValue, ok := raw["trackerAccessControl"]; ok {
+			accessBytes, _ := json.Marshal(accessValue)
+			_ = json.Unmarshal(accessBytes, &config.TrackerAccessControl)
+		}
+		if allowAll, ok := raw["allow_all_tracker"]; ok {
+			if boolValue, isBool := allowAll.(bool); isBool {
+				config.TrackerAccessControl.AllowAll = boolValue
+			}
+		}
+		if allowAreaLocation, ok := raw["allow_area_location"]; ok {
+			if boolValue, isBool := allowAreaLocation.(bool); isBool {
+				config.AllowAreaLocation = boolValue
+			}
+		}
+
+		if err := h.ValidateServerRuntimeConfig(&config); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	if err := h.configManager.SaveServerRuntimeConfig("config/server_runtime_config.json", &config); err != nil {

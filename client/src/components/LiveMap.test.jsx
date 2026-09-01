@@ -85,6 +85,22 @@ describe("LiveMap", () => {
     expect(screen.getByText(/1 tracker/)).toBeInTheDocument();
   });
 
+  it("renders a tracker using its last known history position when the current position is missing", () => {
+    const trackers = [
+      {
+        trackerId: "tracker-2",
+        position: null,
+        position_history: [
+          [1, 2],
+          [2, 3],
+          [3, 4],
+        ],
+      },
+    ];
+    render(<LiveMap {...defaultProps} trackers={trackers} />);
+    expect(screen.getByText(/1 tracker/)).toBeInTheDocument();
+  });
+
   it("hides trails when showTrails is false", () => {
     const trackers = [
       {
