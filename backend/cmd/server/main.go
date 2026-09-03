@@ -112,6 +112,7 @@ func main() {
 	authService := auth.NewAuthService(*authConfig)
 	positioningService := positioning.NewPositioningService()
 	mqttHandler := mqtt.NewMQTTHandler(&startupRuntimeConfig.MQTT, webUIConfigStore, runtimeConfigStore)
+	apiHandler.SetMQTTStatusProvider(mqttHandler.GetConnectionStatus)
 	wsHub := ws.NewHub()
 
 	// Start the WebSocket hub event loop BEFORE any broadcast can be issued.
@@ -282,14 +283,38 @@ func main() {
 		authenticated := apiGroup.Group("")
 		authenticated.Use(auth.AuthMiddleware(authService))
 		{
-			authenticated.GET("/config/web", apiHandler.GetWebUIConfig)
-			authenticated.GET("/dashboard", apiHandler.GetDashboardConfig)
-			authenticated.POST("/config/web", apiHandler.UpdateWebUIConfig)
+			authenticated.GET("/configuration/web", apiHandler.GetWebUIConfig)
+			authenticated.GET("/configuration/dashboard", apiHandler.GetDashboardConfig)
+			authenticated.POST("/configuration/web", apiHandler.UpdateWebUIConfig)
 			authenticated.GET("/auth-config", authHandler.GetAuthConfig)
 			authenticated.POST("/auth-config", authHandler.UpdateAuthConfig)
 			authenticated.GET("/server-runtime-config", apiHandler.GetServerRuntimeConfig)
 			authenticated.POST("/server-runtime-config", apiHandler.UpdateServerRuntimeConfig)
 			authenticated.POST("/server-runtime-config/restart", apiHandler.RestartService)
+			authenticated.GET("/mqtt-status", func(c *gin.Context) {
+				status := mqttHandler.GetConnectionStatus()
+				if !startupRuntimeConfig.MQTT.Enabled {
+					status = "disabled"
+				} else if status == "" {
+					status = "connecting"
+				}
+				c.JSON(http.StatusOK, gin.H{"status": status})
+			})
+			authenticated.POST("/mqtt/connect", func(c *gin.Context) {
+				if err := mqttHandler.Connect(); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "error": err.Error()})
+					return
+				}
+				if err := mqttHandler.StartSubscribing(); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "error": err.Error()})
+					return
+				}
+				c.JSON(http.StatusOK, gin.H{"status": mqttHandler.GetConnectionStatus()})
+			})
+			authenticated.POST("/mqtt/disconnect", func(c *gin.Context) {
+				mqttHandler.Disconnect()
+				c.JSON(http.StatusOK, gin.H{"status": mqttHandler.GetConnectionStatus()})
+			})
 			authenticated.GET("/trackers", apiHandler.GetTrackers)
 			authenticated.POST("/trackers", apiHandler.PostTrackerUpdate)
 		}

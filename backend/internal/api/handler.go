@@ -16,6 +16,11 @@ import (
 )
 
 // APIHandler handles HTTP API requests
+// passwordPlaceholder is the masked value returned for a stored secret on GET
+// and accepted back on POST to mean "keep the existing secret" (matches the
+// reference IndoorPositioning project behavior).
+const passwordPlaceholder = "********"
+
 type APIHandler struct {
 	configManager      *config.ConfigManager
 	runtimeConfigStore *config.RuntimeConfigStore
@@ -23,6 +28,13 @@ type APIHandler struct {
 	trackerStates      map[string]models.TrackerState
 	trackerMu          sync.RWMutex
 	nextTrackerID      int64 // auto-increment id assigned to each newly seen tracker
+	// mqttStatusProvider returns the live MQTT connection status. It is wired
+	// from main via SetMQTTStatusProvider so the server-runtime-config GET can
+	// report a real live_mqtt_status like the reference.
+	mqttStatusProvider func() string
+	// runtimeConfigPath is the persisted server-runtime-config file. Kept as a
+	// field so tests can inject a temp file path.
+	runtimeConfigPath string
 }
 
 // NewAPIHandler creates a new API handler
@@ -32,7 +44,14 @@ func NewAPIHandler(configManager *config.ConfigManager, runtimeConfigStore *conf
 		runtimeConfigStore: runtimeConfigStore,
 		webUIConfigStore:   webUIConfigStore,
 		trackerStates:      make(map[string]models.TrackerState),
+		runtimeConfigPath:  "config/server_runtime_config.json",
 	}
+}
+
+// SetMQTTStatusProvider wires a live-status getter so GET /api/server-runtime-config
+// can populate live_mqtt_status. Safe to call before the server starts.
+func (h *APIHandler) SetMQTTStatusProvider(fn func() string) {
+	h.mqttStatusProvider = fn
 }
 
 // GetWebUIConfig godoc
@@ -43,7 +62,7 @@ func NewAPIHandler(configManager *config.ConfigManager, runtimeConfigStore *conf
 // @Produce json
 // @Success 200 {object} models.WebUIConfig "Web UI configuration"
 // @Failure 500 {object} map[string]string "Failed to load configuration"
-// @Router /api/config/web [get]
+// @Router /api/configuration/web [get]
 func (h *APIHandler) GetWebUIConfig(c *gin.Context) {
 	config, err := h.configManager.LoadWebUIConfig("config/web_config.json")
 	if err != nil {
@@ -74,7 +93,7 @@ func (h *APIHandler) GetDashboardConfig(c *gin.Context) {
 // @Success 200 {object} map[string]string "Configuration updated successfully"
 // @Failure 400 {object} map[string]string "Invalid request body"
 // @Failure 500 {object} map[string]string "Failed to save configuration"
-// @Router /api/config/web [post]
+// @Router /api/configuration/web [post]
 func (h *APIHandler) UpdateWebUIConfig(c *gin.Context) {
 	var config models.WebUIConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
@@ -150,12 +169,33 @@ func (h *APIHandler) UpdateWebUIConfig(c *gin.Context) {
 // @Failure 500 {object} map[string]string "Failed to load configuration"
 // @Router /api/server-runtime-config [get]
 func (h *APIHandler) GetServerRuntimeConfig(c *gin.Context) {
-	config, err := h.configManager.LoadServerRuntimeConfig("config/server_runtime_config.json")
+	config, err := h.configManager.LoadServerRuntimeConfig(h.runtimeConfigPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load server runtime configuration"})
 		return
 	}
-	c.JSON(http.StatusOK, config.ToReferenceAPIResponse())
+	response := config.ToReferenceAPIResponse()
+
+	// Report the live MQTT connection status (reference parity) and mask secrets
+	// so the real password is never leaked over the API.
+	status := ""
+	if h.mqttStatusProvider != nil {
+		status = h.mqttStatusProvider()
+	}
+	maskMqtt := func(m *models.MQTTServerConfig) {
+		m.LiveMQTTStatus = status
+		if m.Password != "" {
+			m.Password = passwordPlaceholder
+		}
+	}
+	maskMqtt(&response.SensecapOpenStream)
+	maskMqtt(&response.LWNSMqtt)
+	maskMqtt(&response.ChirpStackMqtt)
+	if response.Password != "" {
+		response.Password = passwordPlaceholder
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // UpdateServerRuntimeConfig godoc
@@ -248,7 +288,17 @@ func (h *APIHandler) UpdateServerRuntimeConfig(c *gin.Context) {
 		}
 	}
 
-	if err := h.configManager.SaveServerRuntimeConfig("config/server_runtime_config.json", &config); err != nil {
+	// Preserve the previously-stored MQTT password when the client round-trips the
+	// masked placeholder unchanged (reference parity; avoids persisting "********").
+	if config.MQTT.Password == passwordPlaceholder {
+		if stored, loadErr := h.configManager.LoadServerRuntimeConfig(h.runtimeConfigPath); loadErr == nil {
+			config.MQTT.Password = stored.MQTT.Password
+		} else {
+			config.MQTT.Password = ""
+		}
+	}
+
+	if err := h.configManager.SaveServerRuntimeConfig(h.runtimeConfigPath, &config); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save server runtime configuration"})
 		return
 	}

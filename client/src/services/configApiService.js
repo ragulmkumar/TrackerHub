@@ -72,7 +72,7 @@ function normalizeDashboardPayload(data) {
 }
 
 export async function loadWebConfiguration() {
-  const data = await request("/config/web");
+  const data = await request("/configuration/web");
   if (Array.isArray(data?.maps)) {
     return normalizeDashboardPayload(data);
   }
@@ -80,12 +80,12 @@ export async function loadWebConfiguration() {
 }
 
 export async function loadDashboardConfiguration() {
-  const data = await request("/dashboard");
+  const data = await request("/configuration/dashboard");
   return normalizeDashboardPayload(data);
 }
 
 export async function saveWebConfiguration(configData) {
-  return request("/config/web", {
+  return request("/configuration/web", {
     method: "POST",
     body: JSON.stringify(configData),
   });

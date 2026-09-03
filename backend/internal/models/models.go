@@ -200,6 +200,12 @@ type WebUIBeaconConfig struct {
 	TXPower     int     `json:"txPower" validate:"required"` // RSSI at 1m
 	DisplayName string  `json:"displayName,omitempty"`
 	MACAddress  string  `json:"macAddress,omitempty"` // Physical MAC address if known
+	// DeviceID and Map are reference-contract aliases populated by the dashboard
+	// response (ToDashboardResponse). They are derived at read time and not
+	// persisted to the web-config file, so they stay omitempty in the web-config
+	// JSON contract.
+	DeviceID string `json:"deviceId,omitempty"`
+	Map      string `json:"map,omitempty"`
 }
 
 // WebUIMapEntity represents an entity on the map (polyline, wall, etc.)
@@ -273,8 +279,22 @@ func (c *WebUIConfig) ToDashboardResponse() DashboardResponse {
 		return response
 	}
 
+	mapName := ""
+	if c.Map != nil {
+		mapName = c.Map.Name
+	}
+
+	// Copy beacons and enrich each with the reference dashboard aliases
+	// deviceId (= macAddress) and map (= map name).
+	beacons := make([]WebUIBeaconConfig, len(c.Beacons))
+	for i, b := range c.Beacons {
+		beacons[i] = b
+		beacons[i].DeviceID = b.MACAddress
+		beacons[i].Map = mapName
+	}
+
 	entry := DashboardMapEntry{
-		Beacons:  append([]WebUIBeaconConfig(nil), c.Beacons...),
+		Beacons:  beacons,
 		Settings: c.Settings,
 	}
 

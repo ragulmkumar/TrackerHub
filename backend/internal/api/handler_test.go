@@ -3,9 +3,16 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
+	"trackerHub/backend/internal/config"
 	"trackerHub/backend/internal/models"
 )
 
@@ -240,6 +247,14 @@ func TestWebUIConfigDashboardResponseMatchesReferenceContract(t *testing.T) {
 	}
 	if strings.Contains(jsonBody, "\"backgroundImage\"") {
 		t.Fatalf("expected reference dashboard field name background not backgroundImage, got %s", jsonBody)
+	}
+	// Reference dashboard beacons carry a deviceId alias (= macAddress) and the
+	// map name they belong to.
+	if !strings.Contains(jsonBody, "\"deviceId\":\"c30000665686\"") {
+		t.Fatalf("expected per-beacon deviceId in dashboard response, got %s", jsonBody)
+	}
+	if !strings.Contains(jsonBody, "\"map\":\"Indoor\"") {
+		t.Fatalf("expected per-beacon map name in dashboard response, got %s", jsonBody)
 	}
 }
 
@@ -511,5 +526,126 @@ func TestWebUIBeaconConfig_AllFields(t *testing.T) {
 	}
 	if beacon.MACAddress != "C300003E7DE0" {
 		t.Errorf("expected MACAddress C300003E7DE0, got %s", beacon.MACAddress)
+	}
+}
+
+// ── Server runtime config: password masking + live_mqtt_status ──────────────
+
+// newRuntimeConfigHandler writes a stored runtime config to a temp file and
+// returns an APIHandler pointed at that file, so GET/POST handlers can be
+// exercised through a real Gin router.
+func newRuntimeConfigHandler(t *testing.T, stored *models.ServerRuntimeConfig) (*APIHandler, string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "server_runtime_config.json")
+	cm := config.NewConfigManager()
+	if stored != nil {
+		if err := cm.SaveServerRuntimeConfig(path, stored); err != nil {
+			t.Fatalf("failed to write stored runtime config: %v", err)
+		}
+	}
+	return &APIHandler{configManager: cm, runtimeConfigPath: path}, path
+}
+
+func TestGetServerRuntimeConfigMasksPasswordAndReportsStatus(t *testing.T) {
+	handler, _ := newRuntimeConfigHandler(t, &models.ServerRuntimeConfig{
+		MQTT: models.MQTTServerConfig{
+			BrokerHost: "lwns.adarko.io", BrokerPort: 1883,
+			Username: "user", Password: "super-secret-pass", Enabled: true,
+			ApplicationID: "app-01", TopicPattern: "t/#",
+		},
+		Server: models.WebServerConfig{Port: 8022},
+		Kalman: models.KalmanParams{ProcessVariance: 1.0, MeasurementVariance: 10.0},
+	})
+	handler.SetMQTTStatusProvider(func() string { return "connected" })
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/server-runtime-config", handler.GetServerRuntimeConfig)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/server-runtime-config", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"password":"********"`) {
+		t.Fatalf("expected masked placeholder password, got %s", body)
+	}
+	if strings.Contains(body, "super-secret-pass") {
+		t.Fatalf("real password leaked in GET response: %s", body)
+	}
+	if !strings.Contains(body, `"live_mqtt_status":"connected"`) {
+		t.Fatalf("expected live_mqtt_status to be populated, got %s", body)
+	}
+}
+
+func TestUpdateServerRuntimeConfigPreservesPasswordOnPlaceholder(t *testing.T) {
+	handler, path := newRuntimeConfigHandler(t, &models.ServerRuntimeConfig{
+		MQTT: models.MQTTServerConfig{
+			BrokerHost: "lwns.adarko.io", BrokerPort: 1883,
+			Username: "user", Password: "real-stored-secret", Enabled: false,
+			ApplicationID: "app-01", TopicPattern: "t/#",
+		},
+		Server: models.WebServerConfig{Port: 8022},
+		Kalman: models.KalmanParams{ProcessVariance: 1.0, MeasurementVariance: 10.0},
+	})
+
+	// Client round-trips the masked placeholder without changing the password.
+	payload := `{
+		"mqtt":{"brokerHost":"lwns.adarko.io","brokerPort":1883,"username":"user",
+		        "password":"********","applicationID":"app-01","topicPattern":"t/#","enabled":false},
+		"server":{"port":8022},
+		"kalman":{"processVariance":1.0,"measurementVariance":10.0}
+	}`
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/server-runtime-config", handler.UpdateServerRuntimeConfig)
+	req := httptest.NewRequest(http.MethodPost, "/server-runtime-config", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read saved config: %v", err)
+	}
+	if strings.Contains(string(data), "********") {
+		t.Fatalf("placeholder persisted to file instead of real secret: %s", string(data))
+	}
+	if !strings.Contains(string(data), "real-stored-secret") {
+		t.Fatalf("expected stored password to be preserved, got %s", string(data))
+	}
+}
+
+func TestUpdateServerRuntimeConfigWithRealPasswordSavesIt(t *testing.T) {
+	handler, path := newRuntimeConfigHandler(t, nil)
+
+	payload := `{
+		"mqtt":{"brokerHost":"broker","brokerPort":1883,"username":"u",
+		        "password":"new-plain-secret","applicationID":"app","topicPattern":"t/#","enabled":false},
+		"server":{"port":8022},
+		"kalman":{"processVariance":1.0,"measurementVariance":10.0}
+	}`
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/server-runtime-config", handler.UpdateServerRuntimeConfig)
+	req := httptest.NewRequest(http.MethodPost, "/server-runtime-config", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "new-plain-secret") {
+		t.Fatalf("expected new real password to be saved, got %s", string(data))
 	}
 }
