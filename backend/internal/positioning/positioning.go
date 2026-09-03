@@ -120,20 +120,6 @@ func MultilaterationLeastSquares(beaconsWithDist [][3]float64, initialGuess *[2]
 		distances = append(distances, b[2])
 	}
 
-	// Define error function: difference between measured and estimated distances
-	errorFunc := func(pos [2]float64) []float64 {
-		var errors []float64
-		for i, beacon := range beaconCoords {
-			// Calculate Euclidean distance from estimated position to beacon
-			dx := pos[0] - beacon[0]
-			dy := pos[1] - beacon[1]
-			estimatedDist := math.Sqrt(dx*dx + dy*dy)
-			// Error is measured distance minus estimated distance
-			errors = append(errors, distances[i]-estimatedDist)
-		}
-		return errors
-	}
-
 	// Initial guess
 	var pos [2]float64
 	if initialGuess != nil {
@@ -148,43 +134,85 @@ func MultilaterationLeastSquares(beaconsWithDist [][3]float64, initialGuess *[2]
 		pos[1] /= float64(len(beaconCoords))
 	}
 
-	// Simple gradient descent (for demonstration - in practice use LM or similar)
-	learningRate := 0.01
-	maxIterations := 1000
-	tolerance := 1e-6
-
+	// Solve the nonlinear least-squares problem with Levenberg-Marquardt.
+	// This matches the reference project, which uses scipy.optimize.least_squares
+	// with method='lm'. The previous implementation used a fixed-learning-rate
+	// gradient descent with a numerical gradient, which is not robust: across
+	// varying beacon geometries it can stall or diverge by tens of meters from
+	// the correct position. LM uses the analytic Jacobian and an adaptive damping
+	// factor, so it converges reliably for the ill-conditioned real-world cases
+	// that fixed-step gradient descent gets wrong.
+	lambda := 1e-3
+	maxIterations := 100
 	for iter := 0; iter < maxIterations; iter++ {
-		// Calculate error
-		errors := errorFunc(pos)
-
-		// Calculate sum of squared errors
-		var sumSqErr float64
-		for _, e := range errors {
-			sumSqErr += e * e
+		// Build the analytic Jacobian (JtJ and Jtf) and current cost.
+		var JtJ [2][2]float64
+		var Jtf [2]float64
+		var cost float64
+		for i, beacon := range beaconCoords {
+			dx := pos[0] - beacon[0]
+			dy := pos[1] - beacon[1]
+			est := math.Sqrt(dx*dx + dy*dy)
+			if est < 1e-9 {
+				est = 1e-9 // avoid div-by-zero right on top of a beacon
+			}
+			ji0 := dx / est
+			ji1 := dy / est
+			f := est - distances[i]
+			cost += f * f
+			JtJ[0][0] += ji0 * ji0
+			JtJ[0][1] += ji0 * ji1
+			JtJ[1][0] += ji1 * ji0
+			JtJ[1][1] += ji1 * ji1
+			Jtf[0] += ji0 * f
+			Jtf[1] += ji1 * f
 		}
 
-		// Check for convergence
-		if math.Sqrt(sumSqErr) < tolerance {
+		// Solve (JtJ + lambda*I) * dp = -Jtf, accepting a step only when it
+		// reduces the cost; otherwise grow lambda (more gradient-descent-like).
+		accepted := false
+		for trial := 0; trial < 30; trial++ {
+			a := JtJ[0][0] + lambda
+			b := JtJ[0][1]
+			c := JtJ[1][0]
+			d := JtJ[1][1] + lambda
+			det := a*d - b*c
+			if math.Abs(det) < 1e-12 {
+				lambda *= 10
+				continue
+			}
+			dp0 := (-Jtf[0]*d + Jtf[1]*b) / det
+			dp1 := (Jtf[0]*c - Jtf[1]*a) / det
+
+			// Small step means we have converged.
+			if math.Hypot(dp0, dp1) < 1e-6 {
+				return &pos
+			}
+
+			qx := pos[0] + dp0
+			qy := pos[1] + dp1
+			var newCost float64
+			for i, beacon := range beaconCoords {
+				dx := qx - beacon[0]
+				dy := qy - beacon[1]
+				e := math.Sqrt(dx*dx + dy*dy)
+				f := e - distances[i]
+				newCost += f * f
+			}
+			if newCost < cost {
+				pos[0] = qx
+				pos[1] = qy
+				lambda *= 0.5
+				accepted = true
+				break
+			}
+			lambda *= 10
+		}
+
+		if !accepted {
+			// No step reduced the cost — we have converged to a local optimum.
 			break
 		}
-
-		// Calculate gradient (numerical approximation)
-		var grad [2]float64
-		epsilon := 1e-6
-		for i := 0; i < 2; i++ {
-			posPlus := pos
-			posPlus[i] += epsilon
-			errorsPlus := errorFunc(posPlus)
-			var sumSqErrPlus float64
-			for _, e := range errorsPlus {
-				sumSqErrPlus += e * e
-			}
-			grad[i] = (sumSqErrPlus - sumSqErr) / epsilon
-		}
-
-		// Update position
-		pos[0] -= learningRate * grad[0]
-		pos[1] -= learningRate * grad[1]
 	}
 
 	return &pos

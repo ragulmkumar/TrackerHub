@@ -185,17 +185,17 @@ func TestRejectOutliersNoLastPosition(t *testing.T) {
 }
 
 func TestMultilaterationLeastSquares(t *testing.T) {
-	// Three beacons forming a triangle
-	// Beacon 1 at (0, 0), distance 5
-	// Beacon 2 at (10, 0), distance 5
-	// Beacon 3 at (5, 10), distance ~7.07 (sqrt(50))
+	// Three beacons forming a triangle that intersect exactly at (5, 5).
+	// Beacon 1 at (0, 0), distance sqrt(50)
+	// Beacon 2 at (10, 0), distance sqrt(50)
+	// Beacon 3 at (5, 10), distance 5
 	// Expected position: (5, 5)
-	// Note: Current gradient descent implementation has limitations and may not
-	// converge perfectly. We test that it runs and produces a reasonable result.
+	// Uses a robust Levenberg-Marquardt solver (matching the reference), so it
+	// recovers the exact solution rather than an approximate gradient step.
 	beacons := [][3]float64{
-		{0, 0, 5},
-		{10, 0, 5},
-		{5, 10, math.Sqrt(50)},
+		{0, 0, math.Sqrt(50)},
+		{10, 0, math.Sqrt(50)},
+		{5, 10, 5},
 	}
 
 	initialGuess := &[2]float64{5, 5}
@@ -204,14 +204,36 @@ func TestMultilaterationLeastSquares(t *testing.T) {
 		t.Fatal("MultilaterationLeastSquares returned nil")
 	}
 
-	// Should be close to (5, 5) - relaxed tolerance due to gradient descent limitations
-	// The algorithm typically converges to x near 5, but y may be off
-	if math.Abs(result[0]-5.0) > 1.0 {
+	if math.Abs(result[0]-5.0) > 1e-3 {
 		t.Errorf("Expected x ≈ 5.0, got %v", result[0])
 	}
-	// y may not converge perfectly due to simple gradient descent implementation
-	if math.Abs(result[1]-5.0) > 3.0 {
-		t.Errorf("Expected y ≈ 5.0 (within tolerance), got %v", result[1])
+	if math.Abs(result[1]-5.0) > 1e-3 {
+		t.Errorf("Expected y ≈ 5.0, got %v", result[1])
+	}
+}
+
+// TestMultilaterationLeastSquaresLastKnownBranch is a regression test for the
+// wrong-branch problem: with nearly-collinear beacons, distance multilateration
+// has mirror-image local minima. Seeding the solver with the last known position
+// (as the reference does) must pick the correct branch; a centroid start could
+// reflect across the beacon line and land tens of meters away.
+func TestMultilaterationLeastSquaresLastKnownBranch(t *testing.T) {
+	// Nearly-collinear beacons plus a true position well above the line.
+	beacons := [][3]float64{
+		{79.9, 18.7, 56.3},
+		{68.0, 22.8, 63.8},
+		{5.9, 20.7, 122.2},
+	}
+	truePos := [2]float64{123.2, 54.7}
+
+	// Last known position drives the solver to the correct (upper) branch.
+	lastKnown := &[2]float64{120.0, 50.0}
+	result := MultilaterationLeastSquares(beacons, lastKnown)
+	if result == nil {
+		t.Fatal("expected a position with last-known initial guess")
+	}
+	if d := math.Hypot(result[0]-truePos[0], result[1]-truePos[1]); d > 3.0 {
+		t.Fatalf("last-known init recovered position %v, expected near %v (err %.2fm)", *result, truePos, d)
 	}
 }
 

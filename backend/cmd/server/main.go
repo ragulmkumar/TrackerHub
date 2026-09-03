@@ -136,10 +136,22 @@ func main() {
 		enrichedBeacons := models.EnrichDetectedBeaconsWithConfig(report.DetectedBeacons, webUIConfig)
 		report.DetectedBeacons = enrichedBeacons
 
+		// Pass the tracker's previous filtered position as the multilateration
+		// initial guess, matching the reference (which uses last_known_position).
+		// Distance-based multilateration has mirror-image local minima that a
+		// centroid start can fall into (especially with nearly-collinear beacons),
+		// so seeding the solver with the last known position keeps the estimate on
+		// the correct branch and enables outlier rejection against implausible jumps.
+		var lastKnownPosition *[2]float64
+		if prev, ok := apiHandler.GetTrackerSnapshot()[report.TrackerID]; ok && prev.Position != nil {
+			px, py := prev.Position.X, prev.Position.Y
+			lastKnownPosition = &[2]float64{px, py}
+		}
+
 		// Always create/update tracker state for any valid report.
 		// This matches the reference IndoorPositioning behavior where a tracker
 		// appears in the UI as soon as it sends data, even if position cannot be calculated.
-		posResult := positioningService.CalculatePosition(report.DetectedBeacons, webUIConfig, nil)
+		posResult := positioningService.CalculatePosition(report.DetectedBeacons, webUIConfig, lastKnownPosition)
 
 		var accuracy *float64
 		var filteredX, filteredY *float64
