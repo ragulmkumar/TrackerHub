@@ -705,7 +705,7 @@ const Dashboard = () => {
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]">
-          <GlassCard className="p-4 sm:p-5">
+          <GlassCard className="p-4 sm:p-5 lg:col-span-2">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <SectionTitle
                 title="Live position map"
@@ -761,7 +761,9 @@ const Dashboard = () => {
             </div>
           </GlassCard>
 
-          <TrackerList trackers={trackers} />
+          <div className="lg:col-span-2">
+            <TrackerList trackers={trackers} />
+          </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
@@ -919,29 +921,6 @@ const Dashboard = () => {
                   </span>
                 </div>
               ))}
-
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsMapFullScreen(true)}
-                  className="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-200 hover:scale-[1.01]"
-                  style={{
-                    background: `linear-gradient(135deg, ${colorPalette.primary.main}, ${colorPalette.secondary.main})`,
-                    color: colorPalette.primary.contrastText,
-                    boxShadow: `0 8px 24px ${colorPalette.primary.main}30`,
-                  }}
-                >
-                  <div>
-                    <p className="text-sm font-semibold">Open fullscreen map</p>
-                    <p className="text-xs opacity-85">
-                      Expand the live map and tracker view
-                    </p>
-                  </div>
-                  <span className="transition-transform duration-200 group-hover:translate-x-1">
-                    {Icons.expand}
-                  </span>
-                </button>
-              </div>
             </div>
           </GlassCard>
         </div>

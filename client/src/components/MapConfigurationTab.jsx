@@ -700,7 +700,7 @@ export default function MapConfigurationTab({
   return (
     <div className="grid gap-6">
       <div className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-sm backdrop-blur">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2
               className="text-xl font-semibold"
@@ -726,7 +726,7 @@ export default function MapConfigurationTab({
             >
               {beaconCount} beacon{beaconCount === 1 ? "" : "s"}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={importType}
                 onChange={(e) => setImportType(e.target.value)}
@@ -764,7 +764,7 @@ export default function MapConfigurationTab({
 
         {/* Show floor-plan image info when loaded */}
         {safeConfig.map.backgroundImage && (
-          <div className="mb-4 flex items-center justify-between rounded-xl bg-emerald-50/50 border border-emerald-200 p-3">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50/50 border border-emerald-200 p-3">
             <div className="flex items-center gap-3">
               <div className="rounded-lg bg-emerald-100 p-2">
                 <svg
@@ -938,8 +938,8 @@ export default function MapConfigurationTab({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-sm backdrop-blur lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr] xl:grid-cols-[1.4fr_0.6fr]">
+        <section className="rounded-3xl border border-white/70 bg-white/70 p-6 shadow-sm backdrop-blur min-w-0">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2

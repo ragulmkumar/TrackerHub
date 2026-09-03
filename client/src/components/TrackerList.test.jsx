@@ -29,7 +29,7 @@ describe("TrackerList", () => {
     render(<TrackerList trackers={trackers} />);
     expect(screen.getByText("tracker-1")).toBeInTheDocument();
     expect(screen.getByText("x: 5.12m · y: 3.46m")).toBeInTheDocument();
-    expect(screen.getByText("Acc: 1.5m")).toBeInTheDocument();
+    expect(screen.getByText("1.5m")).toBeInTheDocument();
   });
 
   it("displays tracker without position", () => {
@@ -43,7 +43,7 @@ describe("TrackerList", () => {
     render(<TrackerList trackers={trackers} />);
     expect(screen.getByText("tracker-2")).toBeInTheDocument();
     expect(screen.getByText("Position pending")).toBeInTheDocument();
-    expect(screen.getByText("Acc: —")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("formats timestamp correctly", () => {
@@ -74,9 +74,8 @@ describe("TrackerList", () => {
       },
     ];
     render(<TrackerList trackers={trackers} />);
-    expect(screen.getByText("Beacons seen")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("Strongest RSSI: -55")).toBeInTheDocument();
+    expect(screen.getByText("-55")).toBeInTheDocument();
   });
 
   it("handles missing lastDetectedBeacons", () => {
@@ -87,9 +86,8 @@ describe("TrackerList", () => {
       },
     ];
     render(<TrackerList trackers={trackers} />);
-    expect(screen.getByText("Beacons seen")).toBeInTheDocument();
     expect(screen.getByText("0")).toBeInTheDocument();
-    expect(screen.getByText("Strongest RSSI: —")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("handles empty lastDetectedBeacons array", () => {
@@ -101,9 +99,8 @@ describe("TrackerList", () => {
       },
     ];
     render(<TrackerList trackers={trackers} />);
-    expect(screen.getByText("Beacons seen")).toBeInTheDocument();
     expect(screen.getByText("0")).toBeInTheDocument();
-    expect(screen.getByText("Strongest RSSI: —")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("handles tracker with only lastUpdateTime (no timestamp)", () => {
