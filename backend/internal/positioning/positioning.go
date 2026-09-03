@@ -1,6 +1,7 @@
 package positioning
 
 import (
+	"log"
 	"math"
 
 	"trackerHub/backend/internal/models"
@@ -103,6 +104,21 @@ func RejectOutliers(beaconsWithDist [][3]float64, lastKnownPosition *[2]float64,
 	}
 
 	return filtered
+}
+
+// clampToMapBounds clamps a position so it stays inside the configured map
+// rectangle [0, width] x [0, height]. Real beacons are placed within the floor
+// plan, so a tracker that is physically in the room should never be reported
+// outside it — RSSI noise and Kalman velocity overshoot can otherwise push the
+// estimate past the walls. Guard each dimension against a non-positive size.
+func clampToMapBounds(pos [2]float64, width, height float64) [2]float64 {
+	if width > 0 {
+		pos[0] = math.Max(0, math.Min(width, pos[0]))
+	}
+	if height > 0 {
+		pos[1] = math.Max(0, math.Min(height, pos[1]))
+	}
+	return pos
 }
 
 // MultilaterationLeastSquares calculates position using least squares optimization based on distances to known beacon coordinates
@@ -218,6 +234,26 @@ func MultilaterationLeastSquares(beaconsWithDist [][3]float64, initialGuess *[2]
 	return &pos
 }
 
+// weightedBeaconSeed returns a distance-weighted centroid of the beacons: closer
+// beacons (smaller measured distance) dominate. Unlike the plain centroid, which
+// ignores range entirely, this nudges the seed toward where the tracker most
+// likely is. For strongly inhomogeneous distances the plain centroid can sit far
+// from the truth and let the solver land on the wrong mirror branch, so this is
+// a much better start when no last-known position is available.
+func weightedBeaconSeed(beaconsWithDist [][3]float64) [2]float64 {
+	var sx, sy, sw float64
+	for _, b := range beaconsWithDist {
+		w := 1.0 / (b[2]*b[2] + 1e-3)
+		sx += b[0] * w
+		sy += b[1] * w
+		sw += w
+	}
+	if sw == 0 {
+		return [2]float64{}
+	}
+	return [2]float64{sx / sw, sy / sw}
+}
+
 // CalculatePosition calculates position from detected beacons and web UI config
 // Returns PositionResult with position, accuracy, confidence, method, and beacon count
 func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *models.WebUIConfig, lastKnownPosition *[2]float64) *PositionResult {
@@ -233,9 +269,14 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 
 	var beaconsWithCoordsDist [][3]float64
 	var usedBeacons []models.DetectedBeacon
+	// Signal propagation exponent for the log-distance path-loss model.
+	// The reference project uses 2.8 for typical indoor BLE environments.
+	// A value of 0 means "not calibrated" — fall back to the reference default
+	// rather than 2.0, which systematically overestimates distances and pushes
+	// the multilateration solver to wrong positions.
 	n := webUIConfig.Settings.SignalPropagationFactor
 	if n <= 0 || math.IsNaN(n) || math.IsInf(n, 0) {
-		n = 2.0
+		n = 2.8
 	}
 
 	// Create a map of beacons for quick lookup by MAC address
@@ -293,13 +334,70 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 		}
 	}
 
+	// Map bounds for clamping the final estimate. Trackers live inside the floor
+	// plan, so we keep the estimate within its walls regardless of how noisy the
+	// RSSI-derived distances are.
+	mapWidth, mapHeight := 0.0, 0.0
+	if webUIConfig.Map != nil {
+		mapWidth = webUIConfig.Map.Width
+		mapHeight = webUIConfig.Map.Height
+	}
+
+	// Diagnostic: compare beacon spread against declared map size. If the map
+	// is declared much larger than the actual beacon geometry, multilateration
+	// will produce wrong positions because RSSI-derived distances (real meters)
+	// don't match the inflated coordinate space.
+	if len(beaconsWithCoordsDist) >= 2 && mapWidth > 0 && mapHeight > 0 {
+		var minX, maxX, minY, maxY float64
+		minX, minY = beaconsWithCoordsDist[0][0], beaconsWithCoordsDist[0][1]
+		maxX, maxY = minX, minY
+		for _, b := range beaconsWithCoordsDist {
+			if b[0] < minX {
+				minX = b[0]
+			}
+			if b[0] > maxX {
+				maxX = b[0]
+			}
+			if b[1] < minY {
+				minY = b[1]
+			}
+			if b[1] > maxY {
+				maxY = b[1]
+			}
+		}
+		beaconSpreadX := maxX - minX
+		beaconSpreadY := maxY - minY
+		// If the beacon geometry spans less than 25% of the declared map in
+		// either axis, the map dimensions are likely oversized relative to the
+		// real room — positions will be systematically wrong.
+		if (mapWidth > 0 && beaconSpreadX < mapWidth*0.25) ||
+			(mapHeight > 0 && beaconSpreadY < mapHeight*0.25) {
+			log.Printf("[positioning] WARNING: beacon spread (%.1f×%.1f m) is much "+
+				"smaller than declared map (%.0f×%.0f m). If the map width/height "+
+				"does not match the real room size, positions will be inaccurate. "+
+				"Check map dimensions in the Configuration page.",
+				beaconSpreadX, beaconSpreadY, mapWidth, mapHeight)
+		}
+	}
+
 	// Outlier rejection based on last known position
 	beaconsWithCoordsDist = RejectOutliers(beaconsWithCoordsDist, lastKnownPosition, 50.0) // 50m max jump
 
-	// If we still have >=3 beacons after outlier rejection, use multilateration
+	// If we still have >=3 beacons after outlier rejection, use multilateration.
+	// Seed the solver with the last-known position when we have one; otherwise
+	// use a distance-weighted centroid, which measurably beats the plain centroid
+	// (it biases the start toward the near, most reliable beacons).
 	if len(beaconsWithCoordsDist) >= 3 {
-		pos := MultilaterationLeastSquares(beaconsWithCoordsDist, lastKnownPosition)
+		seed := lastKnownPosition
+		var weightedSeed [2]float64
+		if seed == nil {
+			weightedSeed = weightedBeaconSeed(beaconsWithCoordsDist)
+			seed = &weightedSeed
+		}
+		pos := MultilaterationLeastSquares(beaconsWithCoordsDist, seed)
 		if pos != nil {
+			clamped := clampToMapBounds(*pos, mapWidth, mapHeight)
+			pos = &clamped
 			// Calculate accuracy as RMS error of distances
 			var sumSqError float64
 			for _, b := range beaconsWithCoordsDist {
@@ -326,6 +424,8 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 	// Fallback to weighted centroid for 1-2 beacons (or if multilateration failed)
 	pos, accuracy := WeightedCentroid(beaconsWithCoordsDist)
 	if pos != nil {
+		clamped := clampToMapBounds(*pos, mapWidth, mapHeight)
+		pos = &clamped
 		// Lower confidence for weighted centroid: penalize based on beacon count and accuracy
 		// With 1 beacon, max confidence ~0.6; with 2 beacons, max ~0.75
 		beaconFactor := 0.5 + 0.25*float64(len(beaconsWithCoordsDist)) // 0.5 for 1, 0.75 for 2

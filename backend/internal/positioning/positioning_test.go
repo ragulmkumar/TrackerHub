@@ -184,6 +184,30 @@ func TestRejectOutliersNoLastPosition(t *testing.T) {
 	}
 }
 
+func TestWeightedBeaconSeedBiasesTowardNearestBeacon(t *testing.T) {
+	// All beacons share the same x so the plain centroid sits exactly on x=5.
+	// A very small measured distance from the beacon at x=0 should pull the
+	// weighted seed well toward it (the tracker is judged closest to that beacon).
+	beacons := [][3]float64{
+		{0, 0, 0.5}, // very close — dominates the seed
+		{5, 0, 50},
+		{10, 0, 50},
+	}
+	seed := weightedBeaconSeed(beacons)
+	if seed[0] > 2.5 {
+		t.Errorf("weighted seed x = %v, expected to be pulled toward the near beacon (x<2.5)", seed[0])
+	}
+	if seed[1] > 1e-9 {
+		t.Errorf("weighted seed y should be ~0, got %v", seed[1])
+	}
+
+	// A single beacon places the seed exactly at the beacon (no averaging).
+	alone := weightedBeaconSeed([][3]float64{{7, 9, 4}})
+	if math.Abs(alone[0]-7) > 1e-9 || math.Abs(alone[1]-9) > 1e-9 {
+		t.Errorf("single-beacon seed = %v, expected (7, 9)", alone)
+	}
+}
+
 func TestMultilaterationLeastSquares(t *testing.T) {
 	// Three beacons forming a triangle that intersect exactly at (5, 5).
 	// Beacon 1 at (0, 0), distance sqrt(50)
@@ -499,6 +523,41 @@ func TestCalculatePositionWithOutlierRejection(t *testing.T) {
 	}
 	if result.Method != "multilateration" {
 		t.Errorf("Expected method 'multilateration', got %s", result.Method)
+	}
+}
+
+// TestCalculatePositionClampsToMapBounds verifies that a raw estimate which
+// lands outside the floor plan (e.g. from inconsistent RSSI-derived distances,
+// where the LM multilateration can converge far past the walls) is clamped back
+// inside the configured map rectangle. The tracker is physically inside the
+// room, so it must never be reported outside it.
+func TestCalculatePositionClampsToMapBounds(t *testing.T) {
+	config := &models.WebUIConfig{
+		Map: &models.WebUIMapInfo{Name: "Indoor", Width: 20, Height: 20},
+		Beacons: []models.WebUIBeaconConfig{
+			{MACAddress: "AA:BB:CC:DD:EE:01", X: 0, Y: 0, TXPower: -59},
+			{MACAddress: "AA:BB:CC:DD:EE:02", X: 10, Y: 0, TXPower: -59},
+			{MACAddress: "AA:BB:CC:DD:EE:03", X: 5, Y: 10, TXPower: -59},
+		},
+		Settings: models.WebUISettings{SignalPropagationFactor: 2.0},
+	}
+
+	// Equally-strong large distances (~30m) from the three beacons do not have a
+	// consistent intersection inside the 20x20 map: the LM solver lands at
+	// (5, 40) or (5, -20), both far outside. It must be clamped into [0,20]^2.
+	detected := []models.DetectedBeacon{
+		{MACAddress: "AA:BB:CC:DD:EE:01", RSSI: -89},
+		{MACAddress: "AA:BB:CC:DD:EE:02", RSSI: -89},
+		{MACAddress: "AA:BB:CC:DD:EE:03", RSSI: -89},
+	}
+
+	result := CalculatePosition(detected, config, nil)
+	if result == nil || result.Position == nil {
+		t.Fatalf("expected a non-nil clamped position, got %+v", result)
+	}
+	x, y := result.Position[0], result.Position[1]
+	if x < 0 || x > 20 || y < 0 || y > 20 {
+		t.Fatalf("position (%v, %v) is outside the 20x20 map bounds", x, y)
 	}
 }
 

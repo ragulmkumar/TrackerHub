@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -92,7 +93,7 @@ func main() {
 			Map:     nil,
 			Beacons: []models.WebUIBeaconConfig{},
 			Settings: models.WebUISettings{
-				SignalPropagationFactor: 2.5,
+				SignalPropagationFactor: 2.8,
 			},
 		}
 		webUIConfigStore = &config.WebUIConfigStore{}
@@ -183,6 +184,20 @@ func main() {
 			// The helper guarantees a non-nil result when posResult.Position is non-nil.
 			fx := filtered[0]
 			fy := filtered[1]
+			// Keep the filtered position inside the configured map. The Kalman
+			// filter's constant-velocity model can predict a point past the walls
+			// (especially after a gap in reports), which would render the tracker
+			// outside the floor plan even though it is physically inside it.
+			var mW, mH float64
+			if webUIConfig != nil && webUIConfig.Map != nil {
+				mW, mH = webUIConfig.Map.Width, webUIConfig.Map.Height
+			}
+			if mW > 0 {
+				fx = math.Max(0, math.Min(mW, fx))
+			}
+			if mH > 0 {
+				fy = math.Max(0, math.Min(mH, fy))
+			}
 			filteredX = &fx
 			filteredY = &fy
 			// ── end Kalman filtering ──────────────────────────────────────────
