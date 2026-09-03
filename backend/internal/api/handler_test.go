@@ -94,6 +94,7 @@ func TestTrackerStateJSONMatchesReferenceContract(t *testing.T) {
 func TestTrackerStateAutoPopulatesFromRealTrackerReport(t *testing.T) {
 	handler := &APIHandler{trackerStates: map[string]models.TrackerState{}}
 
+	deviceTs := int64(1709990000)
 	handler.UpsertTrackerStateWithData(
 		"2CF7F1C0530004AD",
 		[]float64{10.5, 4.25},
@@ -101,6 +102,9 @@ func TestTrackerStateAutoPopulatesFromRealTrackerReport(t *testing.T) {
 		[]models.DetectedBeacon{{MACAddress: "C300003E7DEF", RSSI: -82}},
 		nil,
 		nil,
+		[]models.DetectedBeacon{{MACAddress: "C300003E7DEF", RSSI: -82}},
+		"Indoor",
+		&deviceTs,
 	)
 
 	if _, ok := handler.trackerStates["2CF7F1C0530004AD"]; !ok {
@@ -119,6 +123,30 @@ func TestTrackerStateAutoPopulatesFromRealTrackerReport(t *testing.T) {
 	}
 	if len(state.LastDetectedBeacons) != 1 {
 		t.Fatalf("expected one detected beacon to be stored, got %d", len(state.LastDetectedBeacons))
+	}
+	if state.ID == 0 {
+		t.Fatalf("expected a stable auto-increment id to be assigned on first sighting")
+	}
+	if state.DeviceName != "2CF7F1C0530004AD" {
+		t.Fatalf("expected device_name to default to tracker id, got %q", state.DeviceName)
+	}
+	if state.Map != "Indoor" {
+		t.Fatalf("expected map to be stored, got %q", state.Map)
+	}
+	if len(state.UsedBeacons) != 1 {
+		t.Fatalf("expected one used beacon to be stored, got %d", len(state.UsedBeacons))
+	}
+	if state.Timestamp != deviceTs {
+		t.Fatalf("expected device measurement timestamp to be stored")
+	}
+	if state.Type != "calculation" {
+		t.Fatalf("expected type to be calculation when a position is present, got %q", state.Type)
+	}
+
+	// A second report for the same tracker must NOT get a new id.
+	handler.UpsertTrackerStateWithData("2CF7F1C0530004AD", []float64{11.0, 5.0}, 1710001000, nil, nil, nil, nil, "", nil)
+	if state2 := handler.trackerStates["2CF7F1C0530004AD"]; state2.ID != state.ID {
+		t.Fatalf("expected the id to be stable across reports, got %d then %d", state.ID, state2.ID)
 	}
 }
 

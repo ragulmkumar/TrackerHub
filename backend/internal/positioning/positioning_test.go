@@ -422,6 +422,9 @@ func TestCalculatePositionValidMultilateration(t *testing.T) {
 	if result.BeaconCount != 3 {
 		t.Errorf("Expected beacon count 3, got %d", result.BeaconCount)
 	}
+	if len(result.UsedBeacons) != 3 {
+		t.Errorf("Expected 3 used beacons, got %d", len(result.UsedBeacons))
+	}
 	if result.Accuracy <= 0 {
 		t.Errorf("Expected positive accuracy, got %v", result.Accuracy)
 	}

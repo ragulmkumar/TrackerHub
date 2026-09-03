@@ -187,6 +187,16 @@ export function normalizeTrackerState(tracker = {}) {
     timestamp: tracker.last_update_time || tracker.timestamp,
     lastUpdateTime: tracker.last_update_time || tracker.timestamp,
     lastDetectedBeacons: tracker.last_detected_beacons || [],
+    usedBeacons: tracker.used_beacons || [],
+    map: tracker.map || null,
+    type: tracker.type || null,
+    online: tracker.online || null,
+    id: tracker.id != null ? tracker.id : null,
+    deviceName: tracker.device_name || null,
+    groupId: tracker.group_id != null ? tracker.group_id : null,
+    isFavorite: Boolean(tracker.is_favorite),
+    trackerNumber:
+      tracker.tracker_number != null ? tracker.tracker_number : null,
     position_history: tracker.position_history || [],
   };
 }

@@ -9,10 +9,11 @@ import (
 // PositionResult contains the calculated position along with accuracy/confidence metrics
 type PositionResult struct {
 	Position    *[2]float64
-	Accuracy    float64 // Estimated accuracy in meters (lower is better)
-	Confidence  float64 // Confidence level 0.0-1.0 (higher is better)
-	Method      string  // "multilateration" or "weighted-centroid"
-	BeaconCount int     // Number of beacons used in calculation
+	Accuracy    float64                 // Estimated accuracy in meters (lower is better)
+	Confidence  float64                 // Confidence level 0.0-1.0 (higher is better)
+	Method      string                  // "multilateration" or "weighted-centroid"
+	BeaconCount int                     // Number of beacons used in calculation
+	UsedBeacons []models.DetectedBeacon // The detected beacons actually accepted into the calculation
 }
 
 // CalculateDistance estimates distance based on RSSI using the Log-distance path loss model
@@ -203,6 +204,7 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 	}
 
 	var beaconsWithCoordsDist [][3]float64
+	var usedBeacons []models.DetectedBeacon
 	n := webUIConfig.Settings.SignalPropagationFactor
 	if n <= 0 || math.IsNaN(n) || math.IsInf(n, 0) {
 		n = 2.0
@@ -245,6 +247,7 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 					cfgBeacon.Y,
 					distance,
 				})
+				usedBeacons = append(usedBeacons, detected)
 			}
 			// else: ignore invalid distance
 		}
@@ -287,6 +290,7 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 				Confidence:  confidence,
 				Method:      "multilateration",
 				BeaconCount: len(beaconsWithCoordsDist),
+				UsedBeacons: usedBeacons,
 			}
 		}
 	}
@@ -306,6 +310,7 @@ func CalculatePosition(detectedBeacons []models.DetectedBeacon, webUIConfig *mod
 			Confidence:  confidence,
 			Method:      "weighted-centroid",
 			BeaconCount: len(beaconsWithCoordsDist),
+			UsedBeacons: usedBeacons,
 		}
 	}
 

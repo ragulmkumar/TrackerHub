@@ -126,6 +126,12 @@ func main() {
 
 		timestamp := time.Now().UnixMilli()
 
+		// Resolve the map name used for positioning (defaults to "Indoor").
+		mapName := "Indoor"
+		if webUIConfig != nil && webUIConfig.Map != nil && webUIConfig.Map.Name != "" {
+			mapName = webUIConfig.Map.Name
+		}
+
 		enrichedBeacons := models.EnrichDetectedBeaconsWithConfig(report.DetectedBeacons, webUIConfig)
 		report.DetectedBeacons = enrichedBeacons
 
@@ -174,11 +180,11 @@ func main() {
 			method = posResult.Method
 			confidence = posResult.Confidence
 			beaconCount = posResult.BeaconCount
-			apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, accuracy, report.Battery)
+			apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, accuracy, report.Battery, posResult.UsedBeacons, mapName, &report.Timestamp)
 		} else {
 			// Position calculation failed (e.g., <3 beacons, no matching beacons, no config).
 			// Still store the tracker state with detected beacons so it appears in UI as "Position pending".
-			apiHandler.UpsertTrackerStateWithData(report.TrackerID, nil, timestamp, report.DetectedBeacons, nil, report.Battery)
+			apiHandler.UpsertTrackerStateWithData(report.TrackerID, nil, timestamp, report.DetectedBeacons, nil, report.Battery, nil, mapName, &report.Timestamp)
 		}
 
 		// Build tracker data for WebSocket - position may be nil if positioning failed
@@ -190,6 +196,7 @@ func main() {
 		}
 
 		snapshot := apiHandler.GetTrackerSnapshot()
+		live := snapshot[report.TrackerID]
 		trackerData := map[string]interface{}{
 			"trackerId":             report.TrackerID,
 			"timestamp":             timestamp,
@@ -200,7 +207,18 @@ func main() {
 			"method":                method,
 			"beaconCount":           beaconCount,
 			"last_detected_beacons": report.DetectedBeacons,
-			"position_history":      snapshot[report.TrackerID].PositionHistory,
+			"used_beacons":          live.UsedBeacons,
+			"map":                   live.Map,
+			"type":                  live.Type,
+			"radius":                live.Radius,
+			"sos":                   live.SOS,
+			"online":                live.Online,
+			"id":                    live.ID,
+			"device_name":           live.DeviceName,
+			"group_id":              live.GroupID,
+			"is_favorite":           live.IsFavorite,
+			"tracker_number":        live.TrackerNumber,
+			"position_history":      live.PositionHistory,
 		}
 
 		message := map[string]interface{}{

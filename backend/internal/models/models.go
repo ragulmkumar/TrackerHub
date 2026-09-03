@@ -128,13 +128,25 @@ type TrackerReport struct {
 // TrackerState represents the current state of a tracker
 type TrackerState struct {
 	TrackerID                string           `json:"trackerId"`
+	TrackerNumber            *string          `json:"tracker_number,omitempty"` // Free-form reference identifier, null by default
+	ID                       int64            `json:"id,omitempty"`             // Stable per-tracker auto-increment id
+	DeviceName               string           `json:"device_name,omitempty"`    // Display device name (defaults to the tracker EUI)
+	GroupID                  int64            `json:"group_id,omitempty"`       // Group membership, 0 by default
+	IsFavorite               bool             `json:"is_favorite,omitempty"`    // Favorited flag, false by default
+	Map                      string           `json:"map,omitempty"`            // Map name used for positioning
+	Type                     string           `json:"type,omitempty"`           // "calculation" when a position exists
+	Radius                   float64          `json:"radius,omitempty"`
+	SOS                      int              `json:"sos,omitempty"`
+	Online                   string           `json:"online,omitempty"` // "online"/"offline" derived from freshness
 	X                        *float64         `json:"x,omitempty"`
 	Y                        *float64         `json:"y,omitempty"`
 	Accuracy                 *float64         `json:"accuracy,omitempty"`
-	Battery                  *int             `json:"battery,omitempty"` // Battery percentage (0-100), nil if unknown
-	LastUpdateTime           int64            `json:"last_update_time" validate:"required,gte=0"`
+	Battery                  *int             `json:"battery,omitempty"`                          // Battery percentage (0-100), nil if unknown
+	LastUpdateTime           int64            `json:"last_update_time" validate:"required,gte=0"` // server time (ms)
+	Timestamp                int64            `json:"timestamp,omitempty"`                        // device measurement time (ms)
 	LastKnownMeasurementTime *int64           `json:"last_known_measurement_time,omitempty"`
 	LastDetectedBeacons      []DetectedBeacon `json:"last_detected_beacons,omitempty"`
+	UsedBeacons              []DetectedBeacon `json:"used_beacons,omitempty"`
 	PositionHistory          [][3]float64     `json:"position_history,omitempty"` // [x, y, timestamp]
 }
 
@@ -147,11 +159,22 @@ type TrackerPosition struct {
 // TrackerLiveState is the WebSocket-facing live contract used by the tracker-mode UI.
 type TrackerLiveState struct {
 	TrackerID           string           `json:"trackerId"`
-	Timestamp           int64            `json:"timestamp"`
+	Timestamp           int64            `json:"timestamp"` // server update time (ms)
 	Position            *TrackerPosition `json:"position,omitempty"`
 	Accuracy            *float64         `json:"accuracy,omitempty"`
 	Battery             *int             `json:"battery,omitempty"`
 	LastDetectedBeacons []DetectedBeacon `json:"last_detected_beacons,omitempty"`
+	UsedBeacons         []DetectedBeacon `json:"used_beacons,omitempty"`
+	Map                 string           `json:"map,omitempty"`
+	Type                string           `json:"type,omitempty"`
+	Radius              float64          `json:"radius,omitempty"`
+	SOS                 int              `json:"sos,omitempty"`
+	Online              string           `json:"online,omitempty"`
+	ID                  int64            `json:"id,omitempty"`
+	DeviceName          string           `json:"device_name,omitempty"`
+	GroupID             int64            `json:"group_id,omitempty"`
+	IsFavorite          bool             `json:"is_favorite,omitempty"`
+	TrackerNumber       *string          `json:"tracker_number,omitempty"`
 	PositionHistory     [][3]float64     `json:"position_history,omitempty"`
 }
 

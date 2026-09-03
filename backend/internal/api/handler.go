@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -21,6 +22,7 @@ type APIHandler struct {
 	webUIConfigStore   *config.WebUIConfigStore
 	trackerStates      map[string]models.TrackerState
 	trackerMu          sync.RWMutex
+	nextTrackerID      int64 // auto-increment id assigned to each newly seen tracker
 }
 
 // NewAPIHandler creates a new API handler
@@ -324,6 +326,7 @@ func (h *APIHandler) GetTrackers(c *gin.Context) {
 	for id, state := range h.trackerStates {
 		normalizedID := models.NormalizeTrackerID(id)
 		state.TrackerID = models.NormalizeTrackerID(state.TrackerID)
+		state.Online = computeOnline(state.LastUpdateTime)
 		trackers[normalizedID] = state
 	}
 	c.JSON(http.StatusOK, trackers)
@@ -343,6 +346,17 @@ func (h *APIHandler) GetTrackerSnapshot() map[string]models.TrackerLiveState {
 			Accuracy:            state.Accuracy,
 			Battery:             state.Battery,
 			LastDetectedBeacons: state.LastDetectedBeacons,
+			UsedBeacons:         state.UsedBeacons,
+			Map:                 state.Map,
+			Type:                state.Type,
+			Radius:              state.Radius,
+			SOS:                 state.SOS,
+			Online:              computeOnline(state.LastUpdateTime),
+			ID:                  state.ID,
+			DeviceName:          state.DeviceName,
+			GroupID:             state.GroupID,
+			IsFavorite:          state.IsFavorite,
+			TrackerNumber:       state.TrackerNumber,
 			PositionHistory:     state.PositionHistory,
 		}
 		if state.X != nil && state.Y != nil {
@@ -351,6 +365,18 @@ func (h *APIHandler) GetTrackerSnapshot() map[string]models.TrackerLiveState {
 		snapshot[normalizedID] = trackerSnapshot
 	}
 	return snapshot
+}
+
+// computeOnline derives a human-readable online/offline status from the last
+// update time using a 120s freshness window, matching the reference project.
+func computeOnline(lastUpdateTime int64) string {
+	if lastUpdateTime <= 0 {
+		return "offline"
+	}
+	if time.Since(time.UnixMilli(lastUpdateTime)) <= 120*time.Second {
+		return "online"
+	}
+	return "offline"
 }
 
 // PostTrackerUpdate godoc
@@ -380,18 +406,28 @@ func (h *APIHandler) PostTrackerUpdate(c *gin.Context) {
 
 // UpsertTrackerState stores or updates the last known state for a tracker.
 func (h *APIHandler) UpsertTrackerState(trackerID string, coordinates []float64, timestamp int64) {
-	h.UpsertTrackerStateWithData(trackerID, coordinates, timestamp, nil, nil, nil)
+	h.UpsertTrackerStateWithData(trackerID, coordinates, timestamp, nil, nil, nil, nil, "", nil)
 }
 
 // UpsertTrackerStateWithData stores or updates the last known state for a tracker and optionally enriches it.
 // battery: when non-nil, updates the stored battery level; when nil, the previous value is preserved.
-func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []float64, timestamp int64, detectedBeacons []models.DetectedBeacon, accuracy *float64, battery *int) {
+// usedBeacons: the beacons that were accepted into the position calculation.
+// mapName: name of the map used for positioning.
+// deviceTimestamp: the measurement timestamp reported by the device.
+func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []float64, timestamp int64, detectedBeacons []models.DetectedBeacon, accuracy *float64, battery *int, usedBeacons []models.DetectedBeacon, mapName string, deviceTimestamp *int64) {
 	h.trackerMu.Lock()
 	defer h.trackerMu.Unlock()
 
 	trackerID = models.NormalizeTrackerID(trackerID)
 	state := h.trackerStates[trackerID]
+	if state.ID == 0 {
+		h.nextTrackerID++
+		state.ID = h.nextTrackerID
+	}
 	state.TrackerID = trackerID
+	if state.DeviceName == "" {
+		state.DeviceName = trackerID
+	}
 	state.LastUpdateTime = timestamp
 	if accuracy != nil {
 		state.Accuracy = accuracy
@@ -408,9 +444,20 @@ func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []
 	if len(detectedBeacons) > 0 {
 		state.LastDetectedBeacons = detectedBeacons
 	}
+	if len(usedBeacons) > 0 {
+		state.UsedBeacons = usedBeacons
+	}
+	if mapName != "" {
+		state.Map = mapName
+	}
+	if deviceTimestamp != nil {
+		state.Timestamp = *deviceTimestamp
+		state.LastKnownMeasurementTime = deviceTimestamp
+	}
 	if len(coordinates) >= 2 {
 		state.X = &coordinates[0]
 		state.Y = &coordinates[1]
+		state.Type = "calculation"
 		state.PositionHistory = append(state.PositionHistory, [3]float64{coordinates[0], coordinates[1], float64(timestamp)})
 		if len(state.PositionHistory) > 20 {
 			state.PositionHistory = state.PositionHistory[len(state.PositionHistory)-20:]
