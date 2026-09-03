@@ -270,19 +270,56 @@ export function drawMapBase(
   });
 }
 
+/** Draw a rounded-rectangle path (used for label pills). */
+function roundRectPath(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** Draw a beacon's broadcast "signal" arcs (Wi-Fi style) above its bulb. */
+function drawSignalArcs(ctx, x, y, time, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = "round";
+  for (let i = 0; i < 3; i += 1) {
+    const r = 5 + i * 3.6;
+    const flick = 0.55 + 0.45 * Math.sin(time / 280 + i * 0.9);
+    ctx.globalAlpha = 0.28 + 0.72 * flick;
+    if (i === 1) ctx.globalAlpha *= 0.72; // stagger the middle wave
+    ctx.beginPath();
+    ctx.arc(x, y, r, -Math.PI * 0.86, -Math.PI * 0.14);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 /**
- * Draw beacons on canvas.
+ * Draw beacons on canvas as little signal-emitting towers.
+ *
+ * Each beacon is drawn as a glowing amber bulb on a short pedestal, with an
+ * expanding pulse ring and fluttering Wi-Fi style signal arcs, so it reads as a
+ * radio beacon rather than a flat dot.
+ *
  * @param {CanvasRenderingContext2D} ctx
  * @param {Array} beacons - Array of beacon objects with x, y, displayName
  * @param {Object} coords - Result from useMapCanvas
  * @param {Object} options - Rendering options
  * @param {string} options.selectedBeaconUuid - UUID of beacon being placed/dragged (highlighted)
  * @param {Function} options.getLabel - Function to get label text (default: displayName)
+ * @param {number} options.time - Animation timestamp (ms), for pulse effects
  */
 export function drawBeacons(ctx, beacons, coords, options = {}) {
   const {
     selectedBeaconUuid,
     getLabel = (b) => b.displayName || b.uuid || "Beacon",
+    time = 0,
   } = options;
 
   beacons.forEach((beacon) => {
@@ -290,22 +327,212 @@ export function drawBeacons(ctx, beacons, coords, options = {}) {
 
     const [cx, cy] = coords.toCanvas(beacon.x, beacon.y);
     const isSelected = selectedBeaconUuid && beacon.uuid === selectedBeaconUuid;
+    const color = isSelected ? "#FCD34D" : "#F59E0B";
+    const dark = isSelected ? "#D97706" : "#B45309";
 
+    // Expanding pulse ring (fades out as it grows)
+    const phase = (time / 1400) % 1;
     ctx.beginPath();
-    ctx.fillStyle = isSelected ? "#FBBF24" : "#FBBF24"; // Yellow for all, could differentiate
-    ctx.arc(cx, cy, isSelected ? 10 : 8, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(245, 158, 11, ${0.5 * (1 - phase)})`;
+    ctx.lineWidth = 2;
+    ctx.arc(cx, cy, 14 + phase * 15, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Soft ambient glow
+    const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, 17);
+    glow.addColorStop(0, `rgba(245, 158, 11, 0.55)`);
+    glow.addColorStop(1, "rgba(245, 158, 11, 0)");
+    ctx.beginPath();
+    ctx.fillStyle = glow;
+    ctx.arc(cx, cy, 17, 0, Math.PI * 2);
     ctx.fill();
 
-    if (isSelected) {
-      ctx.strokeStyle = "#F59E0B";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
+    // Broadcast signal arcs (animate)
+    drawSignalArcs(ctx, cx, cy - 7, time, color);
 
-    ctx.fillStyle = "#1F2937";
+    // Pedestal base + stem (so it reads as a tower, not a plain dot)
+    ctx.fillStyle = "#334155";
+    roundRectPath(ctx, cx - 5, cy + 6, 10, 4, 1);
+    ctx.fill();
+    ctx.fillStyle = "#475569";
+    ctx.fillRect(cx - 1.5, cy + 1.5, 3, 6);
+
+    // Bulb
+    ctx.beginPath();
+    ctx.fillStyle = color;
+    ctx.arc(cx, cy, 6.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = dark;
+    ctx.stroke();
+
+    // Specular highlight (top-left)
+    ctx.beginPath();
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.arc(cx - 2, cy - 2.2, 1.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label with a subtle contrasting pill
     ctx.font = "600 11px Inter, ui-sans-serif, system-ui, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(getLabel(beacon), cx, cy - 14);
+    const label = getLabel(beacon);
+    const w = ctx.measureText(label).width + 10;
+    ctx.fillStyle = "rgba(2,6,23,0.62)";
+    roundRectPath(ctx, cx - w / 2, cy - 30, w, 15, 4);
+    ctx.fill();
+    ctx.fillStyle = "#FDE68A";
+    ctx.fillText(label, cx, cy - 19);
+  });
+}
+
+/** Derive a tracker's heading (radians, canvas space) from its position trail. */
+function trackerHeading(tracker, position) {
+  const history = tracker.position_history || [];
+  if (history.length < 2) return null;
+  const last = history[history.length - 1];
+  const prev = history[history.length - 2];
+  const dx = last[0] - prev[0];
+  const dy = last[1] - prev[1];
+  if (Math.hypot(dx, dy) < 0.15) return null; // effectively stationary
+  // Map y points up, canvas y points down → flip dy
+  return Math.atan2(-dy, dx);
+}
+
+/** Resolve the anchor point for a tracker (position or last history point). */
+function resolveTrackerPosition(tracker) {
+  if (
+    tracker.position &&
+    Number.isFinite(tracker.position.x) &&
+    Number.isFinite(tracker.position.y)
+  ) {
+    return tracker.position;
+  }
+  const history = tracker.position_history || [];
+  if (history.length > 0) {
+    return {
+      x: history[history.length - 1][0],
+      y: history[history.length - 1][1],
+    };
+  }
+  return null;
+}
+
+/**
+ * Draw trackers on canvas as lively, identifiable devices.
+ *
+ * Each tracker is drawn with a soft accuracy gradient, a pulsing halo, a glossy
+ * body with a bright core, and a heading arrow derived from its movement trail.
+ * Online trackers glow cyan; offline/greyed-out ones render in slate.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Array} trackers - Tracker objects (position / position_history)
+ * @param {Object} coords - Result from useMapCanvas
+ * @param {Object} options - Rendering options
+ * @param {number} options.time - Animation timestamp (ms), for pulse effects
+ * @param {Function} options.getLabel - Function to get label text
+ */
+export function drawTrackers(ctx, trackers, coords, options = {}) {
+  const { time = 0, getLabel = (t) => t.trackerId || "unknown" } = options;
+  const { scale } = coords;
+
+  trackers.forEach((tracker) => {
+    const position = resolveTrackerPosition(tracker);
+    if (!position) return;
+
+    const [cx, cy] = coords.toCanvas(position.x, position.y);
+    const online = tracker.online !== "offline" && tracker.online != null;
+    const color = online ? "#22D3EE" : "#94A3B8";
+    const dark = online ? "#0E7490" : "#475569";
+    const glowColor = online ? "34, 211, 238" : "148, 163, 184";
+
+    // Soft accuracy ellipse (radial gradient) with a faint dashed ring
+    if (tracker.accuracy != null) {
+      const radius = Math.min(
+        Math.max(tracker.accuracy * scale * 0.35, 14),
+        90,
+      );
+      const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, radius);
+      grad.addColorStop(0, `rgba(${glowColor}, 0.26)`);
+      grad.addColorStop(1, `rgba(${glowColor}, 0)`);
+      ctx.beginPath();
+      ctx.fillStyle = grad;
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = `rgba(${glowColor}, 0.32)`;
+      ctx.lineWidth = 1;
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Pulsing halo
+    const phase = (time / 1300) % 1;
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(${glowColor}, ${0.5 * (1 - phase)})`;
+    ctx.lineWidth = 2;
+    ctx.arc(cx, cy, 11 + phase * 11, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Ambient glow
+    const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, 15);
+    glow.addColorStop(0, `rgba(${glowColor}, 0.5)`);
+    glow.addColorStop(1, `rgba(${glowColor}, 0)`);
+    ctx.beginPath();
+    ctx.fillStyle = glow;
+    ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Heading arrow (direction of travel)
+    const angle = trackerHeading(tracker, position);
+    if (angle != null) {
+      ctx.save();
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(angle) * 11, cy + Math.sin(angle) * 11);
+      ctx.stroke();
+      // Arrowhead
+      const hx = cx + Math.cos(angle) * 11;
+      const hy = cy + Math.sin(angle) * 11;
+      const back = angle - Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(hx, hy);
+      ctx.lineTo(hx + Math.cos(back + 0.4) * 4, hy + Math.sin(back + 0.4) * 4);
+      ctx.lineTo(hx + Math.cos(back - 0.4) * 4, hy + Math.sin(back - 0.4) * 4);
+      ctx.closePath();
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Glossy body: dark ring → colored disc → white core
+    ctx.beginPath();
+    ctx.fillStyle = dark;
+    ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = color;
+    ctx.arc(cx, cy, 6.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = "#FFFFFF";
+    ctx.arc(cx, cy, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label with contrasting pill
+    ctx.font = "600 12px Inter, ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "left";
+    const label = getLabel(tracker);
+    const w = ctx.measureText(label).width + 10;
+    ctx.fillStyle = "rgba(2,6,23,0.62)";
+    roundRectPath(ctx, cx + 14 - 6, cy - 24, w, 16, 5);
+    ctx.fill();
+    ctx.fillStyle = online ? "#CFFAFE" : "#E2E8F0";
+    ctx.fillText(label, cx + 14, cy - 12);
   });
 }
 

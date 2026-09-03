@@ -4,10 +4,9 @@ import {
   useMapCanvas,
   drawMapBase,
   drawBeacons,
+  drawTrackers,
   drawMapFooter,
 } from "../hooks/useMapCanvas";
-
-const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 export default function LiveMap({
   mapConfig,
@@ -54,164 +53,153 @@ export default function LiveMap({
 
   const { toCanvas, scale } = coords;
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return;
-    }
-
-    const width = Math.max(canvasSize.width, 320);
-    const height = Math.max(canvasSize.height, 280);
-    const dpr = window.devicePixelRatio || 1;
-
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-
-    const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    const drawText = (
-      text,
-      x,
-      y,
-      color = "#F8FAFC",
-      size = 12,
-      align = "left",
-    ) => {
-      ctx.fillStyle = color;
-      ctx.font = `${size}px Inter, ui-sans-serif, system-ui, sans-serif`;
-      ctx.textAlign = align;
-      ctx.fillText(text, x, y);
-    };
-
-    const hasMap = Boolean(mapConfig?.map);
-    if (!hasMap) {
-      ctx.fillStyle = "#020617";
-      ctx.fillRect(0, 0, width, height);
-      drawText(
-        wsStatus === "connected"
-          ? "Waiting for server configuration"
-          : "Waiting for websocket connection",
-        width / 2,
-        height / 2,
-        "#94A3B8",
-        18,
-        "center",
-      );
-      return;
-    }
-
-    // Draw map base (background, grid, entities) using shared function
-    drawMapBase(ctx, {
-      mapConfig,
-      canvasWidth: width,
-      canvasHeight: height,
-      coords,
-      backgroundColor: colorPalette.background.default,
-      backgroundImage: mapConfig?.map?.backgroundImage || null,
-    });
-
-    // Draw beacons using shared function
-    drawBeacons(ctx, beacons, coords);
-
-    // Draw trails
-    if (showTrails) {
-      trackers.forEach((tracker) => {
-        const history = tracker.position_history || [];
-        if (history.length < 2) {
-          return;
-        }
-        ctx.strokeStyle = "rgba(96, 165, 250, 0.75)";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        history.forEach((point, index) => {
-          const [px, py] = toCanvas(point[0], point[1]);
-          if (index === 0) {
-            ctx.moveTo(px, py);
-          } else {
-            ctx.lineTo(px, py);
-          }
-        });
-        ctx.stroke();
-        ctx.setLineDash([]);
-      });
-    }
-
-    // Draw trackers. A tracker should remain visible while waiting for a fresh
-    // position estimate, using its last known point as the display anchor.
-    trackers.forEach((tracker) => {
-      const position =
-        tracker.position &&
-        Number.isFinite(tracker.position.x) &&
-        Number.isFinite(tracker.position.y)
-          ? tracker.position
-          : Array.isArray(tracker.position_history) &&
-              tracker.position_history.length > 0
-            ? {
-                x: tracker.position_history[
-                  tracker.position_history.length - 1
-                ][0],
-                y: tracker.position_history[
-                  tracker.position_history.length - 1
-                ][1],
-              }
-            : null;
-
-      if (!position) {
-        return;
-      }
-
-      const [cx, cy] = toCanvas(position.x, position.y);
-      ctx.beginPath();
-      ctx.fillStyle = "#38BDF8";
-      ctx.arc(cx, cy, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "#FFFFFF";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      const label = tracker.trackerId || "unknown";
-      drawText(label, cx + 14, cy - 12, "#E2E8F0", 12, "left");
-
-      if (tracker.accuracy != null) {
-        const radius = clamp(tracker.accuracy * scale * 0.35, 12, 80);
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(59, 130, 246, 0.18)";
-        ctx.lineWidth = 2;
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    });
-
-    // Draw footer using shared function
-    drawMapFooter(ctx, {
-      mapConfig,
-      canvasWidth: width,
-      canvasHeight: height,
-      coords,
-    });
-
-    if (trackers.length === 0 && wsStatus === "connected") {
-      const message = "No trackers connected";
-      ctx.fillStyle = "rgba(15,23,42,0.75)";
-      ctx.fillRect(width * 0.15, height * 0.4, width * 0.7, 50);
-      drawText(message, width / 2, height * 0.44, "#E2E8F0", 18, "center");
-    }
-  }, [
+  // ── Animated draw loop ──────────────────────────────────────────────────
+  // Keep the latest props/state in refs so the rAF loop always reads fresh
+  // values without needing to tear down and restart every render.
+  const propsRef = useRef({
     mapConfig,
     beacons,
     trackers,
     showTrails,
-    canvasSize,
     wsStatus,
+    canvasSize,
     coords,
-    toCanvas,
-    scale,
-  ]);
+  });
+  useEffect(() => {
+    propsRef.current = {
+      mapConfig,
+      beacons,
+      trackers,
+      showTrails,
+      wsStatus,
+      canvasSize,
+      coords,
+    };
+  }, [mapConfig, beacons, trackers, showTrails, wsStatus, canvasSize, coords]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let rafId = null;
+
+    const drawFrame = () => {
+      const {
+        mapConfig: mc,
+        beacons: bc,
+        trackers: tk,
+        showTrails: st,
+        wsStatus: ws,
+        canvasSize: cs,
+        coords: cr,
+      } = propsRef.current;
+
+      const width = Math.max(cs.width, 320);
+      const height = Math.max(cs.height, 280);
+      const dpr = window.devicePixelRatio || 1;
+
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const drawText = (
+        text,
+        x,
+        y,
+        color = "#F8FAFC",
+        size = 12,
+        align = "left",
+      ) => {
+        ctx.fillStyle = color;
+        ctx.font = `${size}px Inter, ui-sans-serif, system-ui, sans-serif`;
+        ctx.textAlign = align;
+        ctx.fillText(text, x, y);
+      };
+
+      const hasMap = Boolean(mc?.map);
+      if (!hasMap) {
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(0, 0, width, height);
+        drawText(
+          ws === "connected"
+            ? "Waiting for server configuration"
+            : "Waiting for websocket connection",
+          width / 2,
+          height / 2,
+          "#94A3B8",
+          18,
+          "center",
+        );
+        rafId = requestAnimationFrame(drawFrame);
+        return;
+      }
+
+      // Static layers
+      drawMapBase(ctx, {
+        mapConfig: mc,
+        canvasWidth: width,
+        canvasHeight: height,
+        coords: cr,
+        backgroundColor: colorPalette.background.default,
+        backgroundImage: mc?.map?.backgroundImage || null,
+      });
+
+      const time = performance.now();
+
+      // Beacons (animated pulse + signal arcs)
+      drawBeacons(ctx, bc, cr, { time });
+
+      // Trails (static dashed polyline per tracker)
+      if (st) {
+        tk.forEach((tracker) => {
+          const history = tracker.position_history || [];
+          if (history.length < 2) return;
+          ctx.strokeStyle = "rgba(96, 165, 250, 0.75)";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          history.forEach((point, index) => {
+            const [px, py] = cr.toCanvas(point[0], point[1]);
+            if (index === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          });
+          ctx.stroke();
+          ctx.setLineDash([]);
+        });
+      }
+
+      // Trackers (animated pulse halo, glossy body, heading arrow)
+      drawTrackers(ctx, tk, cr, { time });
+
+      // Footer
+      drawMapFooter(ctx, {
+        mapConfig: mc,
+        canvasWidth: width,
+        canvasHeight: height,
+        coords: cr,
+      });
+
+      // Empty state overlay
+      if (tk.length === 0 && ws === "connected") {
+        const message = "No trackers connected";
+        ctx.fillStyle = "rgba(15,23,42,0.75)";
+        ctx.fillRect(width * 0.15, height * 0.4, width * 0.7, 50);
+        drawText(message, width / 2, height * 0.44, "#E2E8F0", 18, "center");
+      }
+
+      rafId = requestAnimationFrame(drawFrame);
+    };
+
+    rafId = requestAnimationFrame(drawFrame);
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, [canvasSize, coords]);
 
   const trackerCount = trackers.length;
   const beaconCount = beacons.length;

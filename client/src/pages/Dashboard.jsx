@@ -334,7 +334,7 @@ const Dashboard = () => {
   const [trackers, setTrackers] = useState([]);
   const [wsStatus, setWsStatus] = useState("offline");
   const [mqttStatus, setMqttStatus] = useState("disconnected");
-  const [showTrails, setShowTrails] = useState(true);
+  const [showTrails, setShowTrails] = useState(false);
 
   const [isMapFullScreen, setIsMapFullScreen] = useState(false);
   const fullScreenRef = useRef(null);

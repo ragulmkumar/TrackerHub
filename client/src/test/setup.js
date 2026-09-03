@@ -57,6 +57,7 @@ HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
   moveTo: vi.fn(),
   lineTo: vi.fn(),
   closePath: vi.fn(),
+  arcTo: vi.fn(),
   setTransform: vi.fn(),
   setLineDash: vi.fn(),
   fillStyle: "",
@@ -80,6 +81,15 @@ HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
   rotate: vi.fn(),
   transform: vi.fn(),
   setTransform: vi.fn(),
+  createRadialGradient: vi.fn(() => ({
+    addColorStop: vi.fn(),
+  })),
+  createLinearGradient: vi.fn(() => ({
+    addColorStop: vi.fn(),
+  })),
+  createPattern: vi.fn(() => ({})),
+  lineCap: "",
+  globalAlpha: 1,
 }));
 
 // Mock FileReader for testing file uploads
@@ -94,7 +104,8 @@ class MockFileReader {
     // The file.type is what the browser would report, which comes from the File constructor
     setTimeout(() => {
       if (file.type && file.type.startsWith("image/")) {
-        this.result = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        this.result =
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
       } else {
         // For non-image files, return a non-image data URL
         this.result = "data:text/plain;base64,dGVzdA==";
