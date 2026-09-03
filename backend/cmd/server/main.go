@@ -174,11 +174,11 @@ func main() {
 			method = posResult.Method
 			confidence = posResult.Confidence
 			beaconCount = posResult.BeaconCount
-			apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, accuracy)
+			apiHandler.UpsertTrackerStateWithData(report.TrackerID, trackerCoords, timestamp, report.DetectedBeacons, accuracy, report.Battery)
 		} else {
 			// Position calculation failed (e.g., <3 beacons, no matching beacons, no config).
 			// Still store the tracker state with detected beacons so it appears in UI as "Position pending".
-			apiHandler.UpsertTrackerStateWithData(report.TrackerID, nil, timestamp, report.DetectedBeacons, nil)
+			apiHandler.UpsertTrackerStateWithData(report.TrackerID, nil, timestamp, report.DetectedBeacons, nil, report.Battery)
 		}
 
 		// Build tracker data for WebSocket - position may be nil if positioning failed
@@ -189,16 +189,18 @@ func main() {
 			positionData = nil // Will serialize to null in JSON
 		}
 
+		snapshot := apiHandler.GetTrackerSnapshot()
 		trackerData := map[string]interface{}{
 			"trackerId":             report.TrackerID,
 			"timestamp":             timestamp,
 			"position":              positionData,
 			"accuracy":              accuracy,
+			"battery":               report.Battery,
 			"confidence":            confidence,
 			"method":                method,
 			"beaconCount":           beaconCount,
 			"last_detected_beacons": report.DetectedBeacons,
-			"position_history":      apiHandler.GetTrackerSnapshot()[report.TrackerID].PositionHistory,
+			"position_history":      snapshot[report.TrackerID].PositionHistory,
 		}
 
 		message := map[string]interface{}{

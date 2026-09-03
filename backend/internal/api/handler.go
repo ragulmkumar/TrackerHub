@@ -341,6 +341,7 @@ func (h *APIHandler) GetTrackerSnapshot() map[string]models.TrackerLiveState {
 			TrackerID:           models.NormalizeTrackerID(state.TrackerID),
 			Timestamp:           state.LastUpdateTime,
 			Accuracy:            state.Accuracy,
+			Battery:             state.Battery,
 			LastDetectedBeacons: state.LastDetectedBeacons,
 			PositionHistory:     state.PositionHistory,
 		}
@@ -379,11 +380,12 @@ func (h *APIHandler) PostTrackerUpdate(c *gin.Context) {
 
 // UpsertTrackerState stores or updates the last known state for a tracker.
 func (h *APIHandler) UpsertTrackerState(trackerID string, coordinates []float64, timestamp int64) {
-	h.UpsertTrackerStateWithData(trackerID, coordinates, timestamp, nil, nil)
+	h.UpsertTrackerStateWithData(trackerID, coordinates, timestamp, nil, nil, nil)
 }
 
 // UpsertTrackerStateWithData stores or updates the last known state for a tracker and optionally enriches it.
-func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []float64, timestamp int64, detectedBeacons []models.DetectedBeacon, accuracy *float64) {
+// battery: when non-nil, updates the stored battery level; when nil, the previous value is preserved.
+func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []float64, timestamp int64, detectedBeacons []models.DetectedBeacon, accuracy *float64, battery *int) {
 	h.trackerMu.Lock()
 	defer h.trackerMu.Unlock()
 
@@ -391,7 +393,18 @@ func (h *APIHandler) UpsertTrackerStateWithData(trackerID string, coordinates []
 	state := h.trackerStates[trackerID]
 	state.TrackerID = trackerID
 	state.LastUpdateTime = timestamp
-	state.Accuracy = accuracy
+	if accuracy != nil {
+		state.Accuracy = accuracy
+	} else if len(coordinates) >= 2 {
+		// keep previous accuracy only when we are not explicitly clearing it
+	} else if len(detectedBeacons) == 0 && battery != nil {
+		// battery-only update: preserve accuracy
+	} else {
+		state.Accuracy = nil
+	}
+	if battery != nil {
+		state.Battery = battery
+	}
 	if len(detectedBeacons) > 0 {
 		state.LastDetectedBeacons = detectedBeacons
 	}

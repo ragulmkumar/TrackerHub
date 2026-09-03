@@ -183,6 +183,7 @@ export function normalizeTrackerState(tracker = {}) {
     trackerId: tracker.trackerId,
     position: hasPosition ? { x: tracker.x, y: tracker.y } : null,
     accuracy: tracker.accuracy != null ? tracker.accuracy : null,
+    battery: tracker.battery != null ? tracker.battery : null,
     timestamp: tracker.last_update_time || tracker.timestamp,
     lastUpdateTime: tracker.last_update_time || tracker.timestamp,
     lastDetectedBeacons: tracker.last_detected_beacons || [],

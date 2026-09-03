@@ -30,6 +30,35 @@ function msSince(timestamp) {
   return Math.max(0, Date.now() - time);
 }
 
+function formatBattery(battery) {
+  if (battery == null) {
+    return "—";
+  }
+  return `${battery}%`;
+}
+
+function getBatteryColor(battery) {
+  if (battery == null) {
+    return { color: colorPalette.text.secondary, bg: "transparent" };
+  }
+  if (battery <= 20) {
+    return {
+      color: colorPalette.error.main,
+      bg: `${colorPalette.error.main}18`,
+    };
+  }
+  if (battery <= 50) {
+    return {
+      color: colorPalette.warning.main,
+      bg: `${colorPalette.warning.main}18`,
+    };
+  }
+  return {
+    color: colorPalette.success.main,
+    bg: `${colorPalette.success.main}18`,
+  };
+}
+
 function TrackerStatusDot({ status }) {
   const meta = {
     live: {
@@ -145,6 +174,7 @@ export default function TrackerList({ trackers = [] }) {
                 <th className="pb-2 pr-3 font-semibold">Accuracy</th>
                 <th className="pb-2 pr-3 font-semibold">Beacons</th>
                 <th className="pb-2 pr-3 font-semibold">RSSI</th>
+                <th className="pb-2 pr-3 font-semibold">Battery</th>
                 <th className="pb-2 pr-3 font-semibold">Last update</th>
                 <th className="pb-2 font-semibold">Status</th>
               </tr>
@@ -196,6 +226,29 @@ export default function TrackerList({ trackers = [] }) {
                     </td>
                     <td className="py-3 pr-3 text-slate-300">
                       {getStrongestRSSI(tracker.lastDetectedBeacons)}
+                    </td>
+                    <td className="py-3 pr-3">
+                      {tracker.battery != null ? (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                          style={{
+                            backgroundColor: getBatteryColor(tracker.battery)
+                              .bg,
+                            color: getBatteryColor(tracker.battery).color,
+                          }}
+                        >
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full"
+                            style={{
+                              backgroundColor: getBatteryColor(tracker.battery)
+                                .color,
+                            }}
+                          />
+                          {formatBattery(tracker.battery)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap py-3 pr-3 text-slate-300">
                       {formatTimestamp(stamp)}

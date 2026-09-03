@@ -122,6 +122,7 @@ type TrackerReport struct {
 	TrackerID       string           `json:"trackerId" validate:"required"`
 	Timestamp       int64            `json:"timestamp" validate:"required,gte=0"`
 	DetectedBeacons []DetectedBeacon `json:"detectedBeacons" validate:"required,dive,required"`
+	Battery         *int             `json:"battery,omitempty"` // Battery percentage (0-100), nil if unknown
 }
 
 // TrackerState represents the current state of a tracker
@@ -130,6 +131,7 @@ type TrackerState struct {
 	X                        *float64         `json:"x,omitempty"`
 	Y                        *float64         `json:"y,omitempty"`
 	Accuracy                 *float64         `json:"accuracy,omitempty"`
+	Battery                  *int             `json:"battery,omitempty"` // Battery percentage (0-100), nil if unknown
 	LastUpdateTime           int64            `json:"last_update_time" validate:"required,gte=0"`
 	LastKnownMeasurementTime *int64           `json:"last_known_measurement_time,omitempty"`
 	LastDetectedBeacons      []DetectedBeacon `json:"last_detected_beacons,omitempty"`
@@ -148,6 +150,7 @@ type TrackerLiveState struct {
 	Timestamp           int64            `json:"timestamp"`
 	Position            *TrackerPosition `json:"position,omitempty"`
 	Accuracy            *float64         `json:"accuracy,omitempty"`
+	Battery             *int             `json:"battery,omitempty"`
 	LastDetectedBeacons []DetectedBeacon `json:"last_detected_beacons,omitempty"`
 	PositionHistory     [][3]float64     `json:"position_history,omitempty"`
 }

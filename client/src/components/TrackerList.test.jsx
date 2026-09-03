@@ -131,4 +131,42 @@ describe("TrackerList", () => {
     expect(screen.getByText("tracker-2")).toBeInTheDocument();
     expect(screen.getByText("tracker-3")).toBeInTheDocument();
   });
+
+  it("shows battery percentage when present", () => {
+    const trackers = [
+      {
+        trackerId: "tracker-1",
+        position: { x: 1, y: 1 },
+        battery: 85,
+        timestamp: Date.now(),
+      },
+    ];
+    render(<TrackerList trackers={trackers} />);
+    expect(screen.getByText("85%")).toBeInTheDocument();
+  });
+
+  it("shows low battery percentage", () => {
+    const trackers = [
+      {
+        trackerId: "tracker-1",
+        position: { x: 1, y: 1 },
+        battery: 10,
+        timestamp: Date.now(),
+      },
+    ];
+    render(<TrackerList trackers={trackers} />);
+    expect(screen.getByText("10%")).toBeInTheDocument();
+  });
+
+  it("shows em dash when battery unknown", () => {
+    const trackers = [
+      {
+        trackerId: "tracker-1",
+        position: { x: 1, y: 1 },
+        timestamp: Date.now(),
+      },
+    ];
+    render(<TrackerList trackers={trackers} />);
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
 });

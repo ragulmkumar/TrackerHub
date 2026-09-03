@@ -100,6 +100,7 @@ func TestTrackerStateAutoPopulatesFromRealTrackerReport(t *testing.T) {
 		1710000000,
 		[]models.DetectedBeacon{{MACAddress: "C300003E7DEF", RSSI: -82}},
 		nil,
+		nil,
 	)
 
 	if _, ok := handler.trackerStates["2CF7F1C0530004AD"]; !ok {

@@ -138,7 +138,7 @@ func (h *MQTTHandler) handleMQTTMessage(msg MQTT.Message) {
 	//   1. ChirpStack v4 / device_sensor_data:
 	//      /device_sensor_data/{ApplicationID}/{devEui}/{channelId}/{slotId}/{measurementId}
 	//      Device EUI at index 3, measurement ID at index 6.
-	//      Messages with measurementId != "5002" (BLE scan) are ignored.
+	//      BLE scan is 5002 (positioning), Battery is 3000 (battery percentage).
 	//
 	//   2. ChirpStack v4 integration:
 	//      application/{ApplicationID}/device/{devEui}/event/up
@@ -156,8 +156,9 @@ func (h *MQTTHandler) handleMQTTMessage(msg MQTT.Message) {
 		}
 		deviceEUI = parts[3]
 		measurementID := parts[6]
-		if measurementID != "5002" {
-			// Only process BLE scan results (measurement ID 5002)
+		// BLE scan (5002) and Battery (3000) are the measurement types we surface
+		// in the live UI. All other measurement types are dropped for now.
+		if measurementID != "5002" && measurementID != "3000" {
 			return
 		}
 	} else {
@@ -246,6 +247,7 @@ func (h *MQTTHandler) parseTrackerReport(deviceEUI string, payload []byte) *mode
 	report := &models.TrackerReport{
 		TrackerID: deviceEUI,
 		Timestamp: timestamp,
+		Battery:   findBatteryPercentage(data),
 	}
 
 	beaconValues := findBeaconValues(data)
@@ -337,6 +339,53 @@ func findNestedMeasurementTimestamp(data interface{}) *int64 {
 		for _, item := range v {
 			if nested := findNestedMeasurementTimestamp(item); nested != nil {
 				return nested
+			}
+		}
+	}
+	return nil
+}
+
+// findBatteryPercentage recursively scans a ChirpStack/SenseCAP payload for
+// a Battery measurement (measurementId == "3000"). When present the battery
+// percentage (0-100) lands in measurementValue as a number. Returns nil when no
+// battery measurement is found.
+func findBatteryPercentage(data interface{}) *int {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		if mid, ok := v["measurementId"]; ok {
+			if midStr, isStr := mid.(string); isStr && midStr == "3000" {
+				if mv, ok := v["measurementValue"]; ok {
+					switch pct := mv.(type) {
+					case float64:
+						clamped := int(pct + 0.5)
+						if clamped < 0 {
+							clamped = 0
+						} else if clamped > 100 {
+							clamped = 100
+						}
+						return &clamped
+					case string:
+						if parsed, err := strconv.Atoi(pct); err == nil {
+							if parsed < 0 {
+								parsed = 0
+							} else if parsed > 100 {
+								parsed = 100
+							}
+							return &parsed
+						}
+					}
+				}
+			}
+		}
+		for _, value := range v {
+			if pct := findBatteryPercentage(value); pct != nil {
+				return pct
+			}
+		}
+	case []interface{}:
+		for _, item := range v {
+			if pct := findBatteryPercentage(item); pct != nil {
+				return pct
 			}
 		}
 	}

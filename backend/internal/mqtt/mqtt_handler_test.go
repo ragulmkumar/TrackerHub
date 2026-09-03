@@ -371,8 +371,30 @@ func TestHandleMQTTMessageDeviceSensorDataFormat(t *testing.T) {
 }
 
 func TestHandleMQTTMessageDeviceSensorDataIgnoresNonBLE5002(t *testing.T) {
-	// device_sensor_data with measurementId != 5002 should be ignored
+	// device_sensor_data with measurementId != 5002 and != 3000 should be ignored
 	payload := `{"value":[{"mac":"c3:00:00:3e:7d:e0","rssi":"-69"}],"timestamp":1746521955000}`
+	msg := &mockMessage{
+		topic:   "/device_sensor_data/8d765299-6bd2-4a9c-a841-7406785ff516/2CF7F1C0530004AD/1/1/4200",
+		payload: []byte(payload),
+	}
+
+	var receivedReport *models.TrackerReport
+	handler := &MQTTHandler{
+		config:         &models.MQTTServerConfig{},
+		messageHandler: func(report *models.TrackerReport, _ *models.WebUIConfig) { receivedReport = report },
+	}
+
+	handler.handleMQTTMessage(msg)
+
+	if receivedReport != nil {
+		t.Error("expected report to be ignored for non-5002, non-3000 measurement ID")
+	}
+}
+
+func TestHandleMQTTMessageDeviceSensorDataBattery3000(t *testing.T) {
+	// device_sensor_data with measurementId 3000 (Battery) should produce a report
+	// carrying the battery percentage even though it has no BLE beacon data.
+	payload := `{"measurementValue":33.0,"measurementId":"3000","type":"Battery","timestamp":1746521955000}`
 	msg := &mockMessage{
 		topic:   "/device_sensor_data/8d765299-6bd2-4a9c-a841-7406785ff516/2CF7F1C0530004AD/1/1/3000",
 		payload: []byte(payload),
@@ -386,8 +408,14 @@ func TestHandleMQTTMessageDeviceSensorDataIgnoresNonBLE5002(t *testing.T) {
 
 	handler.handleMQTTMessage(msg)
 
-	if receivedReport != nil {
-		t.Error("expected report to be ignored for non-5002 measurement ID")
+	if receivedReport == nil {
+		t.Fatal("expected report to be received for battery measurement ID 3000")
+	}
+	if receivedReport.TrackerID != "2CF7F1C0530004AD" {
+		t.Errorf("expected tracker ID 2CF7F1C0530004AD, got %s", receivedReport.TrackerID)
+	}
+	if receivedReport.Battery == nil || *receivedReport.Battery != 33 {
+		t.Errorf("expected battery percentage 33, got %v", receivedReport.Battery)
 	}
 }
 
